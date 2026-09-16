@@ -1,0 +1,18 @@
+#for compiling directory
+/build/
+/build-*/
+/cmake-build-*/
+
+#fuck
+/.idea/
+/.migration-backup/
+/CMakeUserPresets.json
+
+#the product of compiling
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.exe
