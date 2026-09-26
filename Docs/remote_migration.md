@@ -1,3 +1,7 @@
+> 以下保留早期阶段记录，不代表当前功能范围。最新操作、接口与验证请看 [本次上车指南](bringup_guide.md) 和 [迁移记录](migration_status.md)。
+
+> 2026-09-26：接口已更新。当前接口与验证范围以 [架构指南](architecture.md) 为准。
+
 # 第一阶段：真实遥控器输入与二维速度斜坡
 
 本阶段不发送 CAN 电机报文。硬件供电恢复正常后才上板验证。
@@ -10,9 +14,9 @@
 3. 循环 DMA 的 HT/TC 事件收集数据，IDLE 结束一段接收。
    只接受恰好 18 字节的段；错误长度立即发布无效事件。
    消息包含接收时刻，长度为 1 的队列按值复制最新帧。
-4. App/remote/dbus_protocol.c 验证通道范围、拨杆和鼠标按键后一次性提交解析结果。
+4. Task/remote/dbus_protocol.c 验证通道范围、拨杆和鼠标按键后一次性提交解析结果。
    协议无帧头/CRC，本实现靠 IDLE 定界，不声称能识别所有噪声伪帧。
-5. App/robot_app.c 的 RemoteTask（原生优先级 3，每 10 ms）
+5. Task/robot_app.c 的 RemoteTask（原生优先级 3，每 10 ms）
    消费原始帧，判断在线与使能，发布二维速度指令。
 6. 同文件 ControlTask（原生优先级 4，每 10 ms）再次检查原始接收时间，
    然后计算二维限加速度输出。只有这个任务修改输出。
@@ -62,7 +66,7 @@
 
 在项目根目录，用 Windows 原生 GCC（不是 arm-none-eabi-gcc）执行：
 
-    gcc -std=c11 -Wall -Wextra -Werror -ITests/support -IApp/remote -IAlgorithm -IBsp Tests/test_remote.c App/remote/dbus_protocol.c Algorithm/motion_command.c Bsp/bsp_remote_uart.c -o Tests/test_remote.exe
+    gcc -std=c11 -Wall -Wextra -Werror -ITests/support -ITask/remote -IAlgorithm -IBsp Tests/test_remote.c Task/remote/dbus_protocol.c Algorithm/motion_command.c Bsp/bsp_remote_uart.c -o Tests/test_remote.exe
     Tests/test_remote.exe
 
 测试真实解析/斜坡/BSP源文件；HAL和队列使用测试替身。
@@ -72,5 +76,5 @@
 ## CubeMX 再生成
 
 不修改 CubeMX 的 HAL 句柄、IRQ入口和生成的 cmake/stm32cubemx 文件。
-freertos.c 接入代码位于 USER CODE 区。App/Bsp/Algorithm 在顶层 CMake 显式登记。
+freertos.c 接入代码位于 USER CODE 区。Task/Bsp/Algorithm 在顶层 CMake 显式登记。
 原来的模拟速度练习在 .migration-backup 中保留。

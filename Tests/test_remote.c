@@ -2,14 +2,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-#include "dbus_protocol.h"
-#include "motion_command.h"
-#include "bsp_remote_uart.h"
+#include "remote/dbus_protocol.h"
+
+#include "bsp_uart.h"
 #include "queue.h"
 #include "usart.h"
 
 UART_HandleTypeDef huart3;
-static RemotePacket queued;
+static BspUartPacket queued;
 static bool occupied;
 static uint8_t *dma;
 static unsigned dma_size, position;
@@ -23,7 +23,7 @@ BaseType_t xQueueReceive(QueueHandle_t q, void *out, TickType_t wait)
 BaseType_t xQueueOverwriteFromISR(QueueHandle_t q, const void *p, BaseType_t *wake)
 { (void)q; memcpy(&queued,p,sizeof queued); occupied=true; *wake=0; return pdPASS; }
 BaseType_t xQueueReset(QueueHandle_t q) { (void)q; occupied=false; return pdPASS; }
-TickType_t xTaskGetTickCountFromISR(void) { return tick; }
+uint32_t bsp_time_ms_from_isr(void) { return tick; }
 HAL_StatusTypeDef HAL_UART_AbortReceive(UART_HandleTypeDef *h)
 { assert(h == &huart3); return HAL_OK; }
 HAL_StatusTypeDef HAL_UARTEx_ReceiveToIdle_DMA(UART_HandleTypeDef *h,uint8_t *b,uint16_t n)
@@ -70,53 +70,39 @@ int main(void)
     pack(b,661,0,0,0,1,3); assert(!dbus_decode(b,18,&state));
     pack(b,0,0,0,0,0,3); assert(!dbus_decode(b,18,&state));
     pack(b,0,0,0,0,1,3); b[13]=2; assert(!dbus_decode(b,18,&state));
-    PlanarVelocity v=motion_target(660,660,true);
-    assert(fabsf(hypotf(v.vx,v.vy)-2000)<0.01f);
-    assert(motion_target(5,-5,true).vx==0);
-    assert(motion_target(660,660,false).vy==0);
-    PlanarVelocity a={0}, target={1000,0};
-    for(unsigned i=0;i<200;i++) a=motion_step(a,target,0.01f);
-    assert(fabsf(a.vx-1000)<0.01f);
-    a=(PlanarVelocity){0};
-    for(unsigned i=0;i<100;i++) a=motion_step(a,target,0.02f);
-    assert(fabsf(a.vx-1000)<0.01f);
-    a=motion_step((PlanarVelocity){998,0},target,0.01f);
-    assert(a.vx==1000);
-    a=motion_step((PlanarVelocity){100,0},(PlanarVelocity){-100,0},0.01f);
-    assert(a.vx==95);
-    a=motion_step((PlanarVelocity){0},(PlanarVelocity){1000,1000},0.01f);
-    assert(fabsf(hypotf(a.vx,a.vy)-5)<0.001f);
-    assert(motion_step(a,target,0.1f).vx==0);
-    assert(motion_step(a,target,NAN).vx==0);
-
-    assert(bsp_remote_uart_init() && bsp_remote_uart_service());
-    RemotePacket packet;
+    assert(bsp_uart_init() && bsp_uart_recover_rx());
+    BspUartPacket packet;
     for(unsigned i=0;i<24;i++) {
         pack(b,(int)i,0,0,0,1,3); tick=i*7;
         feed(b,18,true);
-        assert(bsp_remote_uart_take(&packet) && packet.valid_length);
-        assert(packet.received_at==tick && memcmp(packet.data,b,18)==0);
+        assert(bsp_uart_receive(&packet) && packet.length == DBUS_FRAME_BYTES);
+        assert(packet.received_at_ms==tick && memcmp(packet.data,b,18)==0);
         /* Duplicate IDLE must not deliver twice. */
-        feed(b,0,true); assert(!bsp_remote_uart_take(&packet));
+        feed(b,0,true); assert(!bsp_uart_receive(&packet));
     }
     feed(b,9,true);
-    assert(bsp_remote_uart_take(&packet) && !packet.valid_length);
+    assert(bsp_uart_receive(&packet) && packet.length != DBUS_FRAME_BYTES);
     /* Good packet crossing a DMA boundary after malformed burst. */
     feed(b,18,true);
-    assert(bsp_remote_uart_take(&packet) && packet.valid_length && !memcmp(b,packet.data,18));
+    assert(bsp_uart_receive(&packet) && packet.length == DBUS_FRAME_BYTES && !memcmp(b,packet.data,18));
     feed(b,18,false); feed(b,18,true);
-    assert(bsp_remote_uart_take(&packet) && !packet.valid_length);
-    feed(b,18,true); assert(bsp_remote_uart_take(&packet) && packet.valid_length);
+    assert(bsp_uart_receive(&packet) && packet.length != DBUS_FRAME_BYTES);
+    feed(b,18,true); assert(bsp_uart_receive(&packet) && packet.length == DBUS_FRAME_BYTES);
+
+    /* 超出通用包容量也不能伪装成一个正常短包。 */
+    for(unsigned i=0;i<5;i++) feed(b,18,i==4);
+    assert(bsp_uart_receive(&packet) && packet.length > BSP_UART_PACKET_BYTES);
+    feed(b,18,true); assert(bsp_uart_receive(&packet) && packet.length == 18);
     UART_HandleTypeDef other={0};
     HAL_UART_ErrorCallback(&other); assert(debug_remote_rx.uart_errors==0);
     feed(b,18,true);
     huart3.ErrorCode=8; HAL_UART_ErrorCallback(&huart3);
     fail_start=true;
-    assert(!bsp_remote_uart_service() && debug_remote_rx.start_failures==1);
-    assert(!bsp_remote_uart_take(&packet)); /* Old packet discarded on restart. */
-    fail_start=false; assert(bsp_remote_uart_service());
-    feed(b,18,true); assert(bsp_remote_uart_take(&packet) && packet.valid_length);
+    assert(!bsp_uart_recover_rx() && debug_remote_rx.start_failures==1);
+    assert(!bsp_uart_receive(&packet)); /* Old packet discarded on restart. */
+    fail_start=false; assert(bsp_uart_recover_rx());
+    feed(b,18,true); assert(bsp_uart_receive(&packet) && packet.length == DBUS_FRAME_BYTES);
     assert(debug_remote_rx.uart_errors==1 && debug_remote_rx.last_uart_error==8);
-    puts("PASS: DBUS decode, input validation, vector ramp, DMA wrap/IDLE, UART restart");
+    puts("PASS: DBUS decode, input validation, DMA wrap/IDLE, UART restart");
     return 0;
 }

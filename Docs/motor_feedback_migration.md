@@ -1,3 +1,5 @@
+> 2026-09-26：接口已更新。当前接口与验证范围以 [架构指南](architecture.md) 为准。
+
 # CAN 电机反馈接收
 
 本阶段只接收反馈，不发送电流/电压控制报文。正常 CAN 模式会对合法帧应答 ACK。
@@ -6,8 +8,8 @@
 
 1. `Algorithm/dji_feedback.c`：将反馈的 8 字节解析成编码器、转速、电流原始值和温度。DJI 电机字节序是高字节在前，与 DBUS 的小端字段不同。
 2. `Bsp/bsp_motor_can.c`：初始化硬件、过滤器、启动接收；中断复制报文到队列。
-3. `App/motor_feedback.c`：任务取队列，按总线和 ID 路由，更新监视变量及 100 ms 离线标志。
-4. `App/robot_app.c`：统一启动入口，增加 `motor_feedback_init()`。
+3. `Task/motor_feedback.c`：任务取队列，按总线和 ID 路由，更新监视变量及 100 ms 离线标志。
+4. `Task/robot_app.c`：统一启动入口，增加 `motor_feedback_init()`。
 
 ## 原工程对应关系
 

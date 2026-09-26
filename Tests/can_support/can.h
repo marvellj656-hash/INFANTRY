@@ -1,7 +1,7 @@
 #include <stdint.h>
 typedef struct { uint32_t ESR; } CAN_Registers;
 typedef struct { CAN_Registers *Instance; } CAN_HandleTypeDef;
-extern CAN_HandleTypeDef hcan1;
+extern CAN_HandleTypeDef hcan1, hcan2;
 typedef struct {
     uint32_t FilterBank, SlaveStartFilterBank, FilterMode, FilterScale;
     uint32_t FilterMaskIdLow, FilterFIFOAssignment, FilterActivation;

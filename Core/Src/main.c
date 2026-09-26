@@ -21,7 +21,9 @@
 #include "cmsis_os.h"
 #include "can.h"
 #include "dma.h"
+#include "spi.h"
 #include "usart.h"
+#include "usb_otg.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -94,6 +96,10 @@ int main(void)
   MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_CAN1_Init();
+  MX_CAN2_Init();
+  MX_SPI1_Init();
+  MX_USART6_UART_Init();
+  MX_USB_OTG_FS_PCD_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -142,7 +148,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 6;
   RCC_OscInitStruct.PLL.PLLN = 168;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
