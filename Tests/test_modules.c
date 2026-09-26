@@ -90,10 +90,14 @@ int main(void) {
     dji_motor_service();
     assert(sends==before+1 && sent.bus==1 && sent.id==0x200);
     assert(sent.data[0]==7 && sent.data[1]==0xd0 && sent.data[2]==0xf8 && sent.data[3]==0x30);
+    assert(debug_motor[MOTOR_CHASSIS_FL].queued_output_raw==2000);
+    assert(debug_motor[MOTOR_CHASSIS_FR].queued_output_raw==-2000);
+    assert(debug_motor[MOTOR_CHASSIS_FL].output_queue_count==1);
     for(unsigned i=4;i<8;i++)assert(sent.data[i]==0);
     DjiMotorHandle duplicate[2]={m[0],m[0]};
     assert(!dji_motor_set_outputs(duplicate,outputs,2));
     now=70;dji_motor_service(); /* Exact command deadline. */
+    assert(debug_motor[MOTOR_CHASSIS_FL].queued_output_raw==0);
     for(unsigned i=0;i<8;i++)assert(sent.data[i]==0);
     now=71;assert(dji_motor_receive(1,0x201,data,8,now));
     dji_motor_service();assert(sent.data[0]==0 && sent.data[1]==0); /* Does not revive old command. */
@@ -109,7 +113,10 @@ int main(void) {
     now=14;dji_motor_service();assert(sent.data[1]==0);
     now=20;assert(dji_motor_receive(1,0x201,data,8,now));
     assert(dji_motor_set_output(m[0],123));
+    unsigned accepted=debug_motor[MOTOR_CHASSIS_FL].output_queue_count;
     tx_ok=false;dji_motor_service();
+    assert(debug_motor[MOTOR_CHASSIS_FL].output_queue_count==accepted);
+    assert(debug_motor[MOTOR_CHASSIS_FL].queued_output_raw==0);
     assert(dji_motor_read(m[0],f) && !f[0].transport_ready);
     tx_ok=true;dji_motor_service();assert(sent.data[1]==0);
     bus_ready=false;assert(dji_motor_set_output(m[0],123));dji_motor_service();

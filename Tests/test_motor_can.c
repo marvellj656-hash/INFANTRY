@@ -9,6 +9,9 @@ CAN_HandleTypeDef hcan1 = {&regs}, hcan2 = {&regs2};
 static BspCanTx tx_slot;
 static CanTxDebug debug_chassis_tx;
 static unsigned pending, defer_abort, fail_send, tx_count;
+static unsigned multi_box, occupied[2], abort_count;
+static uint16_t mailbox_id[2][3];
+static unsigned bus_index(CAN_HandleTypeDef *can) { assert(can==&hcan1 || can==&hcan2); return can==&hcan2; }
 static uint8_t last_tx[8];
 static BspCanFrame queue_data[32];
 static unsigned queue_len, start_count, stop_count;
@@ -52,12 +55,20 @@ HAL_StatusTypeDef HAL_CAN_ActivateNotification(CAN_HandleTypeDef *can, uint32_t 
 }
 uint32_t HAL_CAN_GetError(CAN_HandleTypeDef *can) { assert((can == &hcan1 || can == &hcan2)); return 0x42; }
 uint32_t HAL_CAN_GetState(CAN_HandleTypeDef *can) { assert((can == &hcan1 || can == &hcan2)); return HAL_CAN_STATE_LISTENING; }
-uint32_t HAL_CAN_IsTxMessagePending(CAN_HandleTypeDef *can, uint32_t box) { assert((can == &hcan1 || can == &hcan2) && box == 1); return pending; }
-uint32_t HAL_CAN_GetTxMailboxesFreeLevel(CAN_HandleTypeDef *can) { assert((can == &hcan1 || can == &hcan2)); return 3-pending; }
+uint32_t HAL_CAN_IsTxMessagePending(CAN_HandleTypeDef *can, uint32_t box) { if(multi_box) return occupied[bus_index(can)] & box; assert((can == &hcan1 || can == &hcan2) && box == 1); return pending; }
+uint32_t HAL_CAN_GetTxMailboxesFreeLevel(CAN_HandleTypeDef *can) { if(multi_box) { unsigned n=occupied[bus_index(can)]; return 3-((n&1)!=0)-((n&2)!=0)-((n&4)!=0); } assert((can == &hcan1 || can == &hcan2)); return 3-pending; }
 HAL_StatusTypeDef HAL_CAN_AbortTxRequest(CAN_HandleTypeDef *can, uint32_t box) {
-    assert((can == &hcan1 || can == &hcan2) && box == 1); if (!defer_abort) pending=0; return HAL_OK;
+    if(multi_box) { abort_count++; if(!defer_abort) occupied[bus_index(can)] &= ~box; return HAL_OK; } assert((can == &hcan1 || can == &hcan2) && box == 1); if (!defer_abort) pending=0; return HAL_OK;
 }
 HAL_StatusTypeDef HAL_CAN_AddTxMessage(CAN_HandleTypeDef *can, CAN_TxHeaderTypeDef *header, uint8_t *bytes, uint32_t *box) {
+    if(multi_box) {
+        unsigned bus=bus_index(can), i=0;
+        if(fail_send) return HAL_ERROR;
+        while(i<3 && (occupied[bus] & (1u<<i))) i++;
+        assert(i<3); *box=1u<<i; occupied[bus] |= *box;
+        mailbox_id[bus][i]=header->StdId; memcpy(last_tx,bytes,8); tx_count++;
+        return HAL_OK;
+    }
     assert((can == &hcan1 || can == &hcan2) && !pending);
     assert(header->StdId == 0x200 && header->DLC == 8 && header->IDE == CAN_ID_STD && header->RTR == CAN_RTR_DATA);
     if (fail_send) return HAL_ERROR;
@@ -155,6 +166,49 @@ int main(void)
     regs2.ESR=0;
     BspCanTx second_slot={0};drive.bus=2;
     assert(bsp_can_send_latest(&second_slot,&drive,&debug_chassis_tx));
-    puts("PASS: dual CAN RX, independent startup/errors, filter partition, CubeMX handles, bounded ISR, queue drops, current frame, stop replaces pending drive, bus-off");
+    /* Regression: hardware pending belongs to the NEW mailbox occupant. */
+    multi_box=1;
+    BspCanTx pitch={0}, friction={0}, third={0}, other_bus={0};
+    CanTxDebug pitch_debug={0}, friction_debug={0}, third_debug={0};
+    BspCanFrame p={.bus=2,.id=0x1ff,.length=8}, fdrive={.bus=2,.id=0x200,.length=8,.data={1,2}},
+        fstop={.bus=2,.id=0x200,.length=8}, extra={.bus=2,.id=0x2ff,.length=8};
+    assert(bsp_can_send_latest(&pitch,&p,&pitch_debug));
+    occupied[1]=0; /* pitch completed; mailbox 0 is free */
+    assert(bsp_can_send_latest(&friction,&fdrive,&friction_debug)); /* reuses 0 */
+    unsigned cancelled=abort_count;
+    assert(bsp_can_send_latest(&pitch,&p,&pitch_debug)); /* must use 1 */
+    assert(abort_count==cancelled); /* must never abort friction */
+    assert(occupied[1]==3 && mailbox_id[1][0]==0x200 && mailbox_id[1][1]==0x1ff);
+    assert(bsp_can_send_latest(&third,&extra,&third_debug)); /* mailbox 2 */
+    assert(occupied[1]==7);
+    defer_abort=1;
+    assert(!bsp_can_send_latest(&friction,&fstop,&friction_debug));
+    assert(occupied[1]==7); /* asynchronous abort: no busy-wait */
+    defer_abort=0;
+    assert(bsp_can_send_latest(&friction,&fstop,&friction_debug));
+    assert(occupied[1]==7 && mailbox_id[1][1]==0x1ff && mailbox_id[1][2]==0x2ff);
+    for(unsigned i=0;i<8;i++) assert(last_tx[i]==0);
+    p.bus=1;
+    assert(bsp_can_send_latest(&other_bus,&p,&pitch_debug)); /* bus1 slot0 independent */
+    cancelled=abort_count;
+    occupied[1]=0;
+    assert(bsp_can_send_latest(&friction,&fstop,&friction_debug));
+    assert(abort_count==cancelled && occupied[0]==1);
+    assert(bsp_can_send_latest(&other_bus,&p,&pitch_debug));
+    assert(abort_count==cancelled+1 && occupied[1]==1);
+    assert(bsp_can_send_latest(&third,&extra,&third_debug)); /* now slot1 */
+    cancelled=abort_count;
+    p.bus=2;
+    assert(bsp_can_send_latest(&pitch,&p,&pitch_debug)); /* stale slot1 belongs to third */
+    assert(abort_count==cancelled && mailbox_id[1][1]==0x2ff && mailbox_id[1][2]==0x1ff);
+    occupied[1] &= ~4u; /* pitch completes */
+    assert(bsp_can_send_latest(&third,&extra,&third_debug));
+    occupied[1] &= ~2u;
+    assert(bsp_can_send_latest(&friction,&fdrive,&friction_debug));
+    fail_send=1;
+    assert(!bsp_can_send_latest(&pitch,&p,&pitch_debug));
+    fail_send=0;
+    assert(bsp_can_send_latest(&pitch,&p,&pitch_debug));
+    puts("PASS: mailbox ownership/reuse, dual buses, three slots, stop replacement, deferred abort, TX failure, bounded RX");
     return 0;
 }

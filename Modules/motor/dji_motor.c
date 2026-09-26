@@ -220,6 +220,20 @@ void dji_motor_service(void)
         dji_motor_encode_currents(raw[g], limits[g], frame.data);
         /* 唯一发送者，不同任务控制同帧中的不同电机，也不会互相覆盖。 */
         bool ok = bsp_can_send_latest(&group->tx, &frame, &group->debug);
+        if (ok)
+        {
+            for (unsigned i = 0; i < MOTOR_COUNT; ++i)
+            {
+                const DjiMotor *m = &objects[i];
+                if (!m->registered || m->group != g)
+                    continue;
+                unsigned offset = 2u * m->slot;
+                unsigned value = ((unsigned)frame.data[offset] << 8) | frame.data[offset + 1u];
+                debug_motor[i].queued_output_raw =
+                    value >= 32768u ? (int32_t)value - 65536 : (int32_t)value;
+                debug_motor[i].output_queue_count++;
+            }
+        }
         taskENTER_CRITICAL();
         group->tx_ok = ok;
         taskEXIT_CRITICAL();

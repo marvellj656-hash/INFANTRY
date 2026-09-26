@@ -18,12 +18,14 @@ typedef struct {
     uint32_t busy;            /* 邮箱未空、当前发送未被接受次数。 */
     uint32_t errors;          /* HAL 报错次数。 */
 } CanTxDebug;
-/* 每个 bus/id 一份软件发送槽，仅由电机服务访问。 */
+/* 每个 bus/id 一份软件发送槽，仅由电机服务串行访问。
+ * 槽要长期保存（本工程放在静态电机组中），不能每次发送临时创建。
+ * 所有 HAL CAN 发送都经过此接口，才能正确追踪公共邮箱的归属。 */
 typedef struct {
     uint32_t mailbox; /* HAL 的硬件邮箱位掩码。 */
     uint16_t id;
     uint8_t bus;
-    bool pending;    /* 已提交的请求仍在等待完成。 */
+    bool pending;    /* 提交过请求；仍须检查邮箱归属和硬件状态才能取消。 */
     bool bound;      /* 该槽已经绑定固定的 bus/id。 */
 } BspCanTx;
 bool bsp_can_init(void);

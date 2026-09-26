@@ -48,6 +48,10 @@ typedef struct
     int16_t speed_rpm, current_raw;
     uint8_t temperature;
     uint32_t online, age_ms, frames, invalid_frames;
+    /* 最近一次 HAL 接受的本电机输出及次数；不等于电调已收到/执行。
+     * 用来比较“控制器想发什么”和“最终装进发送邮箱的是什么”。 */
+    int32_t queued_output_raw;
+    uint32_t output_queue_count;
 } MotorFeedbackDebug;
 extern volatile MotorFeedbackDebug debug_motor[MOTOR_COUNT];
 /* 创建任务前注册，静态对象终生有效；重复名字/反馈ID/发送位置返回 NULL。

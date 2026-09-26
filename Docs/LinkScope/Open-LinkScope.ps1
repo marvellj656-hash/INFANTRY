@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links')]
+    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'shoot_stop_baseline')]
     [string]$Preset = '',
     [string]$AppDirectory = 'E:/FOQQ/Linkscope/LinkScope-x86-V1.3.0',
     [string]$ElfPath = '',
@@ -10,7 +10,7 @@ param(
 # Settings are copied only after all paths and variable sections have been checked.
 $ErrorActionPreference = 'Stop'
 try {
-    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links')
+    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop')
     if ([string]::IsNullOrWhiteSpace($Preset)) {
         Write-Host 'Choose the signals to preselect in LinkScope:'
         Write-Host '  1. overview - start here: command / IMU / gimbal / shoot'
@@ -20,6 +20,7 @@ try {
         Write-Host '  5. shoot    - friction / trigger gates and output'
         Write-Host '  6. motors   - CAN buses and the five upper motors'
         Write-Host '  7. links    - NUC and referee receive status'
+        Write-Host '  8. shoot_stop - switch / zero output / CAN queue / actual RPM'
         $answer = Read-Host 'Number [1]'
         if ([string]::IsNullOrWhiteSpace($answer)) { $answer = '1' }
         $choice = 0

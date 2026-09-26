@@ -9,6 +9,15 @@
 static QueueHandle_t rx_queue; /* ISR 放入，设备服务取走。 */
 volatile CanDebug debug_motor_can;
 static bool started[2];
+/* 三个硬件邮箱像三个公共座位，不属于某个固定电机组。
+ * 一帧发完，下一组就能坐到同一个座位。记录现在是谁占用，
+ * 不能只拿上一圈记住的座位号去撤销，否则会撤掉别人的新指令。
+ * 只有 motor_task 调用发送函数；ISR 不发送，也不修改这张表。 */
+static const BspCanTx *mailbox_owner[2][3];
+static unsigned mailbox_index(uint32_t mailbox)
+{
+    return mailbox == 1u ? 0u : mailbox == 2u ? 1u : 2u;
+}
 /* bus 是给上层看的 1/2，数组下标是 0/1；只有这里认识 HAL 句柄。 */
 static CAN_HandleTypeDef *can_handle(uint8_t bus)
 {
@@ -185,7 +194,9 @@ bool bsp_can_send_latest(BspCanTx *slot, const BspCanFrame *frame, volatile CanT
     slot->bus = frame->bus;
     slot->id = frame->id;
     //cancel old frame
-    if (slot->pending && HAL_CAN_IsTxMessagePending(can, slot->mailbox)) {
+    bool owns_mailbox = slot->pending &&
+        mailbox_owner[frame->bus - 1u][mailbox_index(slot->mailbox)] == slot;
+    if (owns_mailbox && HAL_CAN_IsTxMessagePending(can, slot->mailbox)) {
         debug->cancel_requests++;
         if (HAL_CAN_AbortTxRequest(can, slot->mailbox) != HAL_OK) {
             debug->errors++; return false;
@@ -211,6 +222,9 @@ bool bsp_can_send_latest(BspCanTx *slot, const BspCanFrame *frame, volatile CanT
     if (HAL_CAN_AddTxMessage(can, &header, data, &slot->mailbox) != HAL_OK) {
         debug->errors++; return false;
     }
+    /* HAL 刚告诉我们用了哪个邮箱，此时才更新归属。提交失败不能换主人。
+     * 旧主人下次再来时，会发现座位已换人，不会误撤销本帧。 */
+    mailbox_owner[frame->bus - 1u][mailbox_index(slot->mailbox)] = slot;
     slot->pending = true;
     debug->queued++;
     return true;

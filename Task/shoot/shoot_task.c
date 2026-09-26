@@ -43,17 +43,17 @@ void shoot_task_entry(void *argument) {
     bool gimbal_ready = gimbal_get_state(&gimbal) && gimbal.centered;
     uint32_t age = bsp_time_ms() - command.received_at_ms;
     uint32_t faults =
-        (!command.enabled || age >= ROBOT_REMOTE_TIMEOUT_MS) ? 1 : 0;
+        (!command.enabled || age >= ROBOT_REMOTE_TIMEOUT_MS) ? SHOOT_FAULT_DISABLED_OR_STALE : 0;
     if (!motors_ready)
-      faults |= 2;
+      faults |= SHOOT_FAULT_MOTOR_OFFLINE;
     if (!can_ready)
-      faults |= 4;
+      faults |= SHOOT_FAULT_CAN_NOT_READY;
     if (!elapsed || elapsed > pdMS_TO_TICKS(20))
-      faults |= 8;
+      faults |= SHOOT_FAULT_TASK_TIMING;
     if (!gimbal_ready)
-      faults |= 16;
+      faults |= SHOOT_FAULT_GIMBAL_NOT_READY;
     if (!command.friction)
-      faults |= 32;
+      faults |= SHOOT_FAULT_FRICTION_OFF;
     for (unsigned i = 0; i < 3; i++)
       permit = permit && f[i].online && f[i].transport_ready;
     permit = permit && gimbal_ready;
@@ -74,9 +74,14 @@ void shoot_task_entry(void *argument) {
     if (!dji_motor_set_outputs(motors, out.raw, 3)) {
       shoot_control_reset(&controller);
       out = (ShootOutput){0};
+      faults |= SHOOT_FAULT_OUTPUT_REJECTED;
     }
     if (!out.armed && command.fire)
-      faults |= 64;
+      faults |= SHOOT_FAULT_WAIT_FIRE_RELEASE;
+    if (out.armed && !out.friction_ready)
+      faults |= SHOOT_FAULT_WAIT_FRICTION_SPEED;
+    if (out.jam_latched)
+      faults |= SHOOT_FAULT_JAM_LATCHED;
     debug_shoot_task =
         (ShootTaskDebug){faults, age, gimbal_ready, motors_ready, can_ready};
     debug_shoot = out;
