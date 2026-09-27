@@ -1,4 +1,5 @@
 #include "cmd_mapping.h"
+#include "cmd_config.h"
 #include "chassis/chassis_config.h"
 #include "cmd_task.h"
 #include <math.h>
@@ -12,11 +13,11 @@ static float clamp(float x, float limit) {
 }
 
 static float channel_axis(int16_t channel) {
-  float x = clamp((float)channel, 660);
-  if (x > 5)
-    return (x - 5) / 655.0f;
-  if (x < -5)
-    return (x + 5) / 655.0f;
+  float x = clamp((float)channel, CMD_STICK_MAX);
+  if (x > CMD_STICK_DEADBAND)
+    return (x - CMD_STICK_DEADBAND) / (CMD_STICK_MAX - CMD_STICK_DEADBAND);
+  if (x < -CMD_STICK_DEADBAND)
+    return (x + CMD_STICK_DEADBAND) / (CMD_STICK_MAX - CMD_STICK_DEADBAND);
   return 0;
 }
 
@@ -74,12 +75,14 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
       .neutral = neutral,
       .follow_gimbal = enabled && !out->spin};
   if (out->spin)
-    out->chassis.target.wz = 4.5f;
+    out->chassis.target.wz = CHASSIS_SPIN_RAD_S;
   out->gimbal = (GimbalCommand){
       .enabled = enabled,
       .neutral = neutral,
-      .yaw_rate_deg_s = channel_axis(c->ch[2]) * 180.0f + c->mouse_x * 0.3f,
-      .pitch_rate_deg_s = channel_axis(c->ch[3]) * 180.0f + c->mouse_y * 0.2f,
+      .yaw_rate_deg_s = channel_axis(c->ch[2]) * CMD_YAW_STICK_RATE_DEG_S +
+                        c->mouse_x * CMD_YAW_MOUSE_RATE_PER_COUNT,
+      .pitch_rate_deg_s = channel_axis(c->ch[3]) * CMD_PITCH_STICK_RATE_DEG_S +
+                          c->mouse_y * CMD_PITCH_MOUSE_RATE_PER_COUNT,
       .received_at_ms = r->received_at_ms};
   out->auto_requested = c->sw2 == RC_SWITCH_DOWN || c->mouse_right;
   if (!enabled)
@@ -116,11 +119,11 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
   out->shoot = (ShootCommand){
       .enabled = enabled,
       .friction = friction,
-      .fire = enabled && (c->mouse_left || c->wheel >= 200 || c->wheel <= -200),
+      .fire = enabled && (c->mouse_left || c->wheel >= CMD_FIRE_WHEEL_THRESHOLD || c->wheel <= -CMD_FIRE_WHEEL_THRESHOLD),
       /* SW1不再选择连发。保留V键显式切换连发，拨轮/鼠标仍需人为触发。 */
       .mode = s->continuous_key ? SHOOT_CONTINUOUS : SHOOT_SINGLE,
       .received_at_ms = r->received_at_ms};
-  if (c->wheel <= -200)
+  if (c->wheel <= -CMD_FIRE_WHEEL_THRESHOLD)
     out->shoot.mode = SHOOT_REVERSE;
   /* NUC 的 fire_advice 只作为观测值，不能直接当成操作者按下扳机。 */
   if (!enabled) {

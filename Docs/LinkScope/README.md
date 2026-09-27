@@ -1,6 +1,6 @@
 # LinkScope：点一下，选好一组变量
 
-**2026-09-27 最新入口：仍然双击本目录 `Open-LinkScope.cmd`，在黑色窗口 `Number [1]:` 后输入编号并回车。新增 9～15 组，均预先勾选，必须使用新固件及同一次构建的 ELF。**
+**2026-09-27 最新入口：仍然双击本目录 `Open-LinkScope.cmd`，在黑色窗口 `Number [1]:` 后输入编号并回车。新增 9～15 组；第9组按三曲线调参只勾选相对角差、跟随要求角速度、底盘实际角速度，其他分组保持原预选。必须使用匹配固件的 ELF。**
 
 | 编号 | 分组 | 用来回答什么 |
 |---|---|---|
@@ -16,7 +16,7 @@
 
 **2026-09-27 新固件：普通关闭摩擦轮现在会先闭环制动，短暂反向输出是预期行为；右上 disable 仍立即清零。新第5/8组必须配合这次固件与ELF。具体字段见文末最新章节。**
 
-先用 `overview.ini`。它把“遥控有没有下命令 → IMU 有没有准备好 → 云台被谁挡住 → 发射被谁挡住”放在同一页，每组最多 12 个标量，默认全部勾选，20 Hz 采样。
+先用 `overview.ini`。它把“遥控有没有下命令 → IMU 有没有准备好 → 云台被谁挡住 → 发射被谁挡住”放在同一页，每组最多 12 个标量，20 Hz 采样；第9组只预选3条曲线，其他值仍可读。
 
 ## 最快的用法
 
@@ -177,9 +177,9 @@
 
 ## 跟随调参：先查不停转，再查慢
 
-实际生效的配置是 `Task/chassis/chassis_config.h` 的 `CHASSIS_FOLLOW_*`。`Task/gimbal/gimbal_config.h` 里旧 `CHASSIS_KP_V_FOLLOW` 等没有被使用；改那里不会影响跟随。第10组直接读取 `follow_controller.pid` 内的真实参数。`debug_follow_config` 是配置的显示副本，改这个副本不会改变控制器；建议修改配置、编译、烧录，再用曲线核对。
+实际生效的配置是 `Task/chassis/chassis_config.h` 的 `CHASSIS_FOLLOW_*`。旧 `CHASSIS_KP_V_FOLLOW` 等失效配置已删除；统一入口见 [参数表](../tuning_parameters.md)。第10组直接读取 `follow_controller.pid` 内的真实参数。`debug_follow_config` 是配置的显示副本，改这个副本不会改变控制器；建议修改配置、编译、烧录，再用曲线核对。
 
-当前仍保留 Kp=0.04、Ki=Kd=0、2°死区、限速1.5 rad/s、角加速度6 rad/s²。本次增加观测和开关映射，没有将未知实车方向当作已验证。`CHASSIS_FOLLOW_I_LIMIT_RAD_S` 默认0；以后启用 Ki 时还要设置合理的积分限幅，否则积分仍为0。
+以下0.04/2°/1.5rad/s是最初跟随版本的示例参数，当前调参以chassis_config.h和第10组读数为准。本次增加观测和开关映射，没有将未知实车方向当作已验证。`CHASSIS_FOLLOW_I_LIMIT_RAD_S` 默认0；以后启用 Ki 时还要设置合理的积分限幅，否则积分仍为0。
 
 ### 松手后仍持续同方向旋转：选11
 
@@ -219,4 +219,12 @@
 
 NUC端需要按LEN解析新增的7字节心跳，并读取0x20数据末尾新增角速度；完整偏移、方向和兼容选项见 [NUC协议](../transmission_port.md)。
 
-离线验证：本次15个菜单分组共180项已预选，143个不同标量表达式均在新ELF中解析成功；全部启动器CheckOnly检查通过。没有连接硬件或开始采样。
+离线验证：15个菜单分组共180个变量项（第9组后改为仅3条曲线预选），143个不同标量表达式均在新ELF中解析成功；全部启动器CheckOnly检查通过。没有连接硬件或开始采样。
+
+## 三条曲线调跟随（第9组）
+
+只勾选 `debug_follow.error_deg`（云台相对车头的有符号角差，度）、`debug_follow.wz_rad_s`（跟随环要求角速度，rad/s）、`debug_chassis.measured_velocity.wz`（四轮反馈反算角速度，rad/s）。后两条单位一致可以比较；角差与角速度不是同一种量，不能比较曲线高度来判断谁跟上谁。先看数值 active=1、measured_velocity_valid=1、spin=0、fault_flags=0。
+
+跟随目标是角差0°，默认±2°死区内不再追。机械零点由 `Task/gimbal/gimbal_config.h` 的 `CENTER_ECD_YAW` 定义，当前普通安装为5800，这是编码器计数而不是角度。只有云台和车头对齐时该角差也接近0，才能直接据此跟随。`debug_ins.yaw_deg` 是云台世界角，不是本跟随环直接输入。
+
+真正生效的是 `Task/chassis/chassis_config.h`：CHASSIS_FOLLOW_KP/KI/KD、CHASSIS_FOLLOW_MAX_RAD_S、CHASSIS_YAW_ACCEL_RAD_S2，以及跟随死区/方向/积分限幅。gimbal_config.h中旧CHASSIS_KP_V_FOLLOW等已删除。先保持Ki=Kd=0，方向与停车正确后再小幅增加Kp；要求速度顶住当前限速时才逐步改跟随限速，一次只改一项并重新编译烧录。旧版0.04/1.5rad/s只是示例；当前值以配置和第10组为准，单改Kp无法越过限速。

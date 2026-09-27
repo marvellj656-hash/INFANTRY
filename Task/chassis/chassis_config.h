@@ -5,7 +5,11 @@
 #define CHASSIS_MAX_YAW_RAD_S 7.0f
 #define CHASSIS_ACCEL_MM_S2 4000.0f
 #define CHASSIS_YAW_ACCEL_RAD_S2 6.0f
-/* 右拨杆中位：云台偏向哪边，车头慢慢跟过去。先用低速参数上车确认方向。
+/* SW1下位小陀螺的目标角速度；仍受总限速、斜坡、轮速和功率限制。 */
+#define CHASSIS_SPIN_RAD_S 4.5f
+/* 跟随角度环：SW2中位/下位且未开小陀螺时，让云台相对车头的角差趋近0。
+ * 本组CHASSIS_FOLLOW_*才是跟随PID；后面的CHASSIS_KP/KI/KD是四轮速度环。
+ * 先用小角度确认底盘转动让角差缩小，再提高速度。
  * 与旧 RTT 符号一致：新的 relative_deg 已取过编码器负号，所以这里为+1。 */
 #define CHASSIS_FOLLOW_DIRECTION 1.0f
 #define CHASSIS_FOLLOW_KP 0.04f /* (rad/s)/deg */
@@ -27,6 +31,7 @@
 #define CHASSIS_MAX_MOTOR_RPM 9000.0f
 /* C620 的控制码值：16384 对应 20 A。普通模式沿用原 8000 码值，约 9.77 A，不是 8000 mA。 */
 #define CHASSIS_CURRENT_LIMIT_RAW 8000
+/* 四轮速度环：转子RPM -> C620电流码。与上面的跟随角度环是两层控制。 */
 #define CHASSIS_KP 6.0f
 #define CHASSIS_KI 0.2f
 #define CHASSIS_KD 0.0001f

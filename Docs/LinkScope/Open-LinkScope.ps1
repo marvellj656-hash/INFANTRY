@@ -66,7 +66,8 @@ try {
         }
     }
     $settings = [regex]::Replace($settings, '(?m)^AxfPath=.*$', [System.Text.RegularExpressions.MatchEvaluator]{ param($match) 'AxfPath=' + $resolvedElf })
-    Write-Host ('Preset: ' + $Preset + '; preselected signals: ' + $sections.Count)
+    $enabledCount = [regex]::Matches($settings, '(?m)^EnableScope=true\r?$').Count
+    Write-Host ('Preset: ' + $Preset + '; preselected curves: ' + $enabledCount + '; listed values: ' + $sections.Count)
     Write-Host ('ELF: ' + $resolvedElf)
     if ($CheckOnly) {
         Write-Host 'CheckOnly: no settings changed and no application started.'

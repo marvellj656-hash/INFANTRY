@@ -2,6 +2,26 @@
 #define SHOOT_CONFIG_H
 /* 沿用 RTT 的转子 RPM、旋向与 PID；2006 的最终码值修正为协议允许的 10000。 */
 #define SHOOT_PERIOD_MS 2u
+/* PID统一在这里改，不再藏在shoot_control.c内。
+ * 摩擦/拨弹速度环输入转子RPM、输出电流码；拨弹角度环输入转子度、输出RPM。
+ * I_LIMIT限制积分部分，OUTPUT_LIMIT/MAX_RPM限制整个环的输出。
+ */
+#define FRICTION_SPEED_KP 30.0f
+#define FRICTION_SPEED_KI 0.0f
+#define FRICTION_SPEED_KD 0.08f
+#define FRICTION_SPEED_I_LIMIT_RAW 3.0f
+#define FRICTION_OUTPUT_LIMIT_RAW 16000
+#define TRIGGER_SPEED_KP 10.0f
+#define TRIGGER_SPEED_KI 5.0f
+#define TRIGGER_SPEED_KD 0.01f
+#define TRIGGER_SPEED_I_LIMIT_RAW 1500.0f
+#define TRIGGER_OUTPUT_LIMIT_RAW 10000
+#define TRIGGER_ANGLE_KP 5.0f
+#define TRIGGER_ANGLE_KI 0.0f
+#define TRIGGER_ANGLE_KD 0.0f
+#define TRIGGER_ANGLE_I_LIMIT_RPM 0.0f
+#define TRIGGER_ANGLE_MAX_RPM 10000.0f
+/* 电机层与PID共用输出限幅；协议仍有M3508=16384、M2006=10000的硬上限。 */
 #define FRICTION_RPM 6200.0f
 #define FRICTION_ACCEL_RPM_S 12000.0f
 #define FRICTION_READY_ERROR_RPM 400.0f
@@ -15,6 +35,7 @@
 #define FRICTION_BRAKE_KP 1.5f
 #define FRICTION_BRAKE_KI 0.0f
 #define FRICTION_BRAKE_KD 0.0f
+#define FRICTION_BRAKE_I_LIMIT_RAW 0.0f /* 默认关闭积分；启用Ki时需同时设置。 */
 #define FRICTION_BRAKE_LIMIT_RAW 2500
 #define FRICTION_STOP_RPM 100.0f
 #define FRICTION_STOP_HOLD_S 0.05f

@@ -8,15 +8,21 @@ void shoot_control_reset(ShootController *s)
 {
     memset(s, 0, sizeof(*s));
     unsigned opt = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement;
-    const pid_config_t friction = INIT_PID_CONFIG(30, 0, 0.08f, 3, 16000, opt);
-    const pid_config_t trigger = INIT_PID_CONFIG(10, 5, 0.01f, 1500, 10000, opt);
-    const pid_config_t angle = INIT_PID_CONFIG(5, 0, 0, 0, 10000, opt);
+    const pid_config_t friction = INIT_PID_CONFIG(
+        FRICTION_SPEED_KP, FRICTION_SPEED_KI, FRICTION_SPEED_KD,
+        FRICTION_SPEED_I_LIMIT_RAW, FRICTION_OUTPUT_LIMIT_RAW, opt);
+    const pid_config_t trigger = INIT_PID_CONFIG(
+        TRIGGER_SPEED_KP, TRIGGER_SPEED_KI, TRIGGER_SPEED_KD,
+        TRIGGER_SPEED_I_LIMIT_RAW, TRIGGER_OUTPUT_LIMIT_RAW, opt);
+    const pid_config_t angle = INIT_PID_CONFIG(
+        TRIGGER_ANGLE_KP, TRIGGER_ANGLE_KI, TRIGGER_ANGLE_KD,
+        TRIGGER_ANGLE_I_LIMIT_RPM, TRIGGER_ANGLE_MAX_RPM, opt);
     pid_init(&s->speed[0], &friction);
     pid_init(&s->speed[1], &friction);
     pid_init(&s->speed[2], &trigger);
     pid_init(&s->angle, &angle);
     const pid_config_t brake = INIT_PID_CONFIG(
-        FRICTION_BRAKE_KP, FRICTION_BRAKE_KI, FRICTION_BRAKE_KD, 0,
+        FRICTION_BRAKE_KP, FRICTION_BRAKE_KI, FRICTION_BRAKE_KD, FRICTION_BRAKE_I_LIMIT_RAW,
         FRICTION_BRAKE_LIMIT_RAW, opt);
     for (unsigned i = 0; i < 2; ++i)
         pid_init(&s->brake[i], &brake);

@@ -1,5 +1,7 @@
 # 从一个动作开始读代码
 
+调参先看 [唯一参数入口表](tuning_parameters.md)。
+
 先看懂“拨一下摇杆，电机为什么动”。不用从 USB 中断、DMA、FreeRTOS 调度器开始通读。NUC的收包、恢复和坐标参考有各自的用途，不必一开始通读。此次把发送节拍、busy重试和心跳放在模块里，先看任务给模块哪些业务数据。
 
 ## 第一遍只读四处
@@ -36,14 +38,14 @@ flowchart LR
 | 改左拨杆/右拨杆的功能 | `Task/cmd/cmd_mapping.c` |
 | 改 Pitch 活动范围 | `Task/gimbal/gimbal_config.h` 的 `PIT_ANGLE_MIN/MAX` |
 | 改云台手动双环 PID | 同文件 `*_A_IMU` 角度环、`*_V_IMU` 速度环；实际启用字段以 `gimbal_control.c` 的 `configure()` 为准 |
-| 改摇杆推动时目标变化速度 | `cmd_mapping.c` 的 `yaw_rate_deg_s/pitch_rate_deg_s`；另受 `GIMBAL_MAX_RATE_DEG_S` 限制 |
+| 改摇杆推动时目标变化速度 | `Task/cmd/cmd_config.h` 的 `CMD_*_STICK_RATE_DEG_S` / `CMD_*_MOUSE_RATE_PER_COUNT`；另受 `GIMBAL_MAX_RATE_DEG_S` 限制 |
 | 改电调编号/接线声明 | `Task/robot.c` 的 `motor_config` |
 | 改摩擦目标转速/拨弹步进量 | `Task/shoot/shoot_config.h` |
 | 使用 NUC 识别结果 | `Modules/transmission/transmission.h` 的 `transmission_get_state()` |
 | 修改 NUC 字节协议 | `Modules/transmission/transmission_protocol.c` |
 | 查 USB 枚举、丢包、插拔恢复 | 最后再看 `Bsp/nuc/` |
 
-注意：配置文件里保留的旧 `GIMBAL_RC_MOVE_RATIO_PIT/YAW` 当前没有被映射函数使用，改它们不会改变遥控手感；不要只凭宏名字判断是否生效。云台配置中旧 `CHASSIS_*_FOLLOW` 仍未使用；新的有效跟随参数在底盘配置的 `CHASSIS_FOLLOW_*`。
+旧失效跟随、遥控倍率与CAN配置已清理。底盘跟随只在chassis_config.h调整，云台双环只在gimbal_config.h调整；详细分工见参数入口表。
 
 ## Pitch “慢”和“范围小”是两件事
 

@@ -71,14 +71,14 @@ static const DjiMotorConfig motor_config[] = {
      .type = DJI_M3508,
      .bus = 2,
      .esc_id = FRICTION_LEFT_ESC_ID,
-     .output_limit_raw = 16000,
+     .output_limit_raw = FRICTION_OUTPUT_LIMIT_RAW,
      .feedback_timeout_ms = ROBOT_MOTOR_FEEDBACK_TIMEOUT_MS,
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS},
     {.id = MOTOR_FRICTION_R,
      .type = DJI_M3508,
      .bus = 2,
      .esc_id = FRICTION_RIGHT_ESC_ID,
-     .output_limit_raw = 16000,
+     .output_limit_raw = FRICTION_OUTPUT_LIMIT_RAW,
      .feedback_timeout_ms = ROBOT_MOTOR_FEEDBACK_TIMEOUT_MS,
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS},
 
@@ -86,7 +86,7 @@ static const DjiMotorConfig motor_config[] = {
      .type = DJI_M2006,
      .bus = 2,
      .esc_id = 3,
-     .output_limit_raw = 10000,
+     .output_limit_raw = TRIGGER_OUTPUT_LIMIT_RAW,
      .feedback_timeout_ms = ROBOT_MOTOR_FEEDBACK_TIMEOUT_MS,
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS}};
 bool robot_init(void) {

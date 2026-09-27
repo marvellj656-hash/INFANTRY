@@ -8,21 +8,39 @@ static float clamp(float x, float lo, float hi) {
 static void configure(GimbalController *s, bool automatic) {
   const unsigned opt = PID_Trapezoid_Intergral | PID_Integral_Limit |
                        PID_Derivative_On_Measurement;
+  /* 每个模式都完整读取自己的五个参数，避免“头文件改了但这里仍写死0”。 */
   const pid_config_t a[2] = {
-      INIT_PID_CONFIG(automatic ? YAW_KP_A_AUTO : YAW_KP_A_IMU, 0,
-                      automatic ? YAW_KD_A_AUTO : YAW_KD_A_IMU, 0,
-                      YAW_MAX_A_IMU, opt),
-      INIT_PID_CONFIG(automatic ? PITCH_KP_A_AUTO : PITCH_KP_A_IMU, 0,
-                      automatic ? PITCH_KD_A_AUTO : PITCH_KD_A_IMU, 0,
-                      PITCH_MAX_A_IMU, opt)};
+      INIT_PID_CONFIG(
+          automatic ? YAW_KP_A_AUTO : YAW_KP_A_IMU,
+          automatic ? YAW_KI_A_AUTO : YAW_KI_A_IMU,
+          automatic ? YAW_KD_A_AUTO : YAW_KD_A_IMU,
+          automatic ? YAW_INTEGRAL_A_AUTO : YAW_INTEGRAL_A_IMU,
+          automatic ? YAW_MAX_A_AUTO : YAW_MAX_A_IMU,
+          opt),
+      INIT_PID_CONFIG(
+          automatic ? PITCH_KP_A_AUTO : PITCH_KP_A_IMU,
+          automatic ? PITCH_KI_A_AUTO : PITCH_KI_A_IMU,
+          automatic ? PITCH_KD_A_AUTO : PITCH_KD_A_IMU,
+          automatic ? PITCH_INTEGRAL_A_AUTO : PITCH_INTEGRAL_A_IMU,
+          automatic ? PITCH_MAX_A_AUTO : PITCH_MAX_A_IMU,
+          opt)
+  };
   const pid_config_t v[2] = {
-      INIT_PID_CONFIG(automatic ? YAW_KP_V_AUTO : YAW_KP_V_IMU, 0,
-                      automatic ? YAW_KD_V_AUTO : YAW_KD_V_IMU, 0,
-                      YAW_MAX_V_IMU, opt),
-      INIT_PID_CONFIG(automatic ? PITCH_KP_V_AUTO : PITCH_KP_V_IMU,
-                      automatic ? PITCH_KI_V_AUTO : PITCH_KI_V_IMU,
-                      automatic ? PITCH_KD_V_AUTO : PITCH_KD_V_IMU,
-                      PITCH_INTEGRAL_V_IMU, PITCH_MAX_V_IMU, opt)};
+      INIT_PID_CONFIG(
+          automatic ? YAW_KP_V_AUTO : YAW_KP_V_IMU,
+          automatic ? YAW_KI_V_AUTO : YAW_KI_V_IMU,
+          automatic ? YAW_KD_V_AUTO : YAW_KD_V_IMU,
+          automatic ? YAW_INTEGRAL_V_AUTO : YAW_INTEGRAL_V_IMU,
+          automatic ? YAW_MAX_V_AUTO : YAW_MAX_V_IMU,
+          opt),
+      INIT_PID_CONFIG(
+          automatic ? PITCH_KP_V_AUTO : PITCH_KP_V_IMU,
+          automatic ? PITCH_KI_V_AUTO : PITCH_KI_V_IMU,
+          automatic ? PITCH_KD_V_AUTO : PITCH_KD_V_IMU,
+          automatic ? PITCH_INTEGRAL_V_AUTO : PITCH_INTEGRAL_V_IMU,
+          automatic ? PITCH_MAX_V_AUTO : PITCH_MAX_V_IMU,
+          opt)
+  };
   for (unsigned i = 0; i < 2; i++) {
     pid_init(&s->angle[i], &a[i]);
     pid_init(&s->speed[i], &v[i]);

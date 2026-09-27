@@ -10,6 +10,8 @@ $includes += Get-ChildItem "$Project/Algorithm","$Project/Bsp" -Filter *.h -Recu
     Select-Object -ExpandProperty DirectoryName -Unique | ForEach-Object { "-I$_" }
 $algorithm = @('Task/chassis/chassis_control.c','Task/cmd/cmd_mapping.c','Algorithm/pid/pid.c','Algorithm/ramp/ramp.c','Algorithm/omni_kinematics/omni_kinematics.c','Algorithm/power_model/power_model.c')
 $suites = @(
+    @{ Name='gimbal_config'; Mock=''; Files=@('Tests/test_gimbal_config.c','Task/gimbal/gimbal_control.c','Algorithm/pid/pid.c') },
+    @{ Name='gimbal_config_override'; Mock=''; Options=@('-include', "$Project/Tests/config_support/gimbal_config_override.h"); Files=@('Tests/test_gimbal_config.c','Task/gimbal/gimbal_control.c','Algorithm/pid/pid.c') },
     @{ Name="brake_follow"; Mock=""; Files=@("Tests/test_brake_follow.c","Task/shoot/shoot_control.c","Algorithm/chassis_follow/chassis_follow.c","Algorithm/pid/pid.c","Algorithm/ramp/ramp.c") },
     @{ Name='shoot_path'; Mock='Tests/can_support'; Files=@('Tests/test_shoot_path.c','Task/cmd/cmd_mapping.c','Task/shoot/shoot_control.c','Modules/motor/dji_motor.c','Modules/motor/dji_protocol.c','Algorithm/pid/pid.c','Algorithm/ramp/ramp.c') },
     @{ Name='cmd'; Mock=''; Files=@('Tests/test_cmd.c') + $algorithm },
@@ -32,6 +34,7 @@ foreach ($suite in $suites) {
     $options = @('-DCHASSIS_HOST_TEST','-std=c11','-Wall','-Wextra','-Werror')
     if ($suite.Mock) { $options += "-I$Project/$($suite.Mock)" }
     if ($suite.ExtraMock) { $options += "-I$Project/$($suite.ExtraMock)" }
+    if ($suite.Options) { $options += $suite.Options }
     $options += $includes
     $options += $suite.Files | ForEach-Object { "$Project/$_" }
     $options += @('-lm','-o',"$output/$($suite.Name).exe")

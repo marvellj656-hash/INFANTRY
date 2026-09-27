@@ -84,14 +84,18 @@ static void test_follow(void)
     assert(cfg.Kd==CHASSIS_FOLLOW_KD);
     assert(cfg.IntegralLimit==CHASSIS_FOLLOW_I_LIMIT_RAD_S);
     assert(cfg.MaxOut==CHASSIS_FOLLOW_MAX_RAD_S);
-    chassis_follow_init(&s,&cfg);
+    /* 算法算例使用固定题目，不把实车调参当成回归失败。
+     * 上面检查项目配置；下面独立验证已知P增益、死区和限幅的计算。 */
+    const pid_config_t scenario=INIT_PID_CONFIG(0.04f,0,0,0,1.5f,
+        PID_Derivative_On_Measurement | PID_Integral_Limit);
+    chassis_follow_init(&s,&scenario);
     chassis_follow_update(&s,20,2,true,0.002f,&out);
     assert(out.active && fabsf(out.wz_rad_s-0.72f)<0.0001f);
     chassis_follow_update(&s,-20,2,true,0.002f,&out);assert(out.wz_rad_s<0);
     chassis_follow_update(&s,359,2,true,0.002f,&out);
     assert(out.active && out.wz_rad_s==0 && out.error_deg==-1);
     chassis_follow_update(&s,181,2,true,0.002f,&out);
-    assert(out.error_deg==-179 && out.wz_rad_s==-CHASSIS_FOLLOW_MAX_RAD_S);
+    assert(out.error_deg==-179 && out.wz_rad_s==-scenario.MaxOut);
     chassis_follow_update(&s,90,2,false,0.002f,&out);assert(!out.active && out.wz_rad_s==0);
     chassis_follow_update(&s,NAN,2,true,0.002f,&out);assert(!out.active);
     chassis_follow_update(&s,20,2,true,0.021f,&out);assert(!out.active);
