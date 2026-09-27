@@ -6,11 +6,13 @@
 #include "omni_kinematics.h"
 #include "pid.h"
 #include "chassis_control.h"
+#include "chassis_follow.h"
 typedef struct
 {
     ChassisVelocity target;
     uint32_t received_at_ms; /* 保留原始遥控帧时间，不能用任务更新时间冒充新数据。 */
     bool enabled, neutral;
+    bool follow_gimbal; /* 只表达模式；相对角由底盘任务读取新鲜云台快照。 */
 } ChassisCommand;
 typedef struct
 {
@@ -26,6 +28,7 @@ typedef struct
 } ControlDebug;
 extern volatile ControlDebug debug_control;
 extern volatile ChassisOutput debug_chassis;
+extern volatile ChassisFollowOutput debug_follow;
 bool chassis_init(void); /* 只创建命令队列，不创建任务。 */
 bool chassis_set_command(const ChassisCommand *command);
 void chassis_task_entry(void *argument);

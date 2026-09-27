@@ -48,6 +48,7 @@ void cmd_task_entry(void *argument) {
                            .sw1 = c->sw1,
                            .sw2 = c->sw2,
                            .spin = output.spin,
+                           .follow = output.chassis.follow_gimbal,
                            .friction = output.shoot.friction,
                            .fire = output.shoot.fire,
                            .neutral = output.gimbal.neutral,

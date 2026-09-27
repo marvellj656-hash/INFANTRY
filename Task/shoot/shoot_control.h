@@ -26,15 +26,19 @@ typedef struct
 typedef struct
 {
     pid_obj_t speed[3], angle;
+    pid_obj_t brake[2]; /* 独立的停车PID，不能沿用运行时的积分和微分历史。 */
     float friction_rpm, ready_s, target_angle, jam_s, reverse_s;
     ShootMode last_mode;
     bool armed, last_fire, jam_latched;
+    bool friction_running, braking;
+    float brake_s, stopped_s;
 } ShootController;
 typedef struct
 {
     int16_t raw[3];
     float target_rpm[3];
     bool armed, friction_ready, reversing, jam_latched;
+    bool braking, brake_timed_out;
 } ShootOutput;
 void shoot_control_reset(ShootController *s);
 void shoot_control_update(ShootController *s, const ShootCommand *cmd, const ShootInput *in,

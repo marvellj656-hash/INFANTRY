@@ -27,7 +27,7 @@ void shoot_task_entry(void *argument) {
   (void)argument;
   TickType_t wake = xTaskGetTickCount(), previous = wake;
   ShootCommand command = {0};
-  uint32_t generation = 0;
+  uint32_t generation = 0, brake_timeouts = 0;
   for (;;) {
     TickType_t now = xTaskGetTickCount(), elapsed = now - previous;
     previous = now;
@@ -36,7 +36,10 @@ void shoot_task_entry(void *argument) {
     GimbalOutput gimbal = {0};
     bool permit = dji_motor_read_many(motors, 3, f);
     bool motors_ready = permit, can_ready = permit;
+    uint32_t offline_mask = 0;
     for (unsigned i = 0; i < 3; i++) {
+      if (!f[i].online)
+        offline_mask |= 1u << i;
       motors_ready &= f[i].online;
       can_ready &= f[i].transport_ready;
     }
@@ -82,8 +85,12 @@ void shoot_task_entry(void *argument) {
       faults |= SHOOT_FAULT_WAIT_FRICTION_SPEED;
     if (out.jam_latched)
       faults |= SHOOT_FAULT_JAM_LATCHED;
-    debug_shoot_task =
-        (ShootTaskDebug){faults, age, gimbal_ready, motors_ready, can_ready};
+    if (out.brake_timed_out)
+      brake_timeouts++;
+    debug_shoot_task = (ShootTaskDebug){
+        .faults = faults, .command_age_ms = age, .gimbal_ready = gimbal_ready,
+        .motors_ready = motors_ready, .can_ready = can_ready,
+        .offline_mask = offline_mask, .brake_timeouts = brake_timeouts};
     debug_shoot = out;
     if (elapsed > pdMS_TO_TICKS(20))
       wake = now;

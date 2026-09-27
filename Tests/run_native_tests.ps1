@@ -10,6 +10,7 @@ $includes += Get-ChildItem "$Project/Algorithm","$Project/Bsp" -Filter *.h -Recu
     Select-Object -ExpandProperty DirectoryName -Unique | ForEach-Object { "-I$_" }
 $algorithm = @('Task/chassis/chassis_control.c','Task/cmd/cmd_mapping.c','Algorithm/pid/pid.c','Algorithm/ramp/ramp.c','Algorithm/omni_kinematics/omni_kinematics.c','Algorithm/power_model/power_model.c')
 $suites = @(
+    @{ Name="brake_follow"; Mock=""; Files=@("Tests/test_brake_follow.c","Task/shoot/shoot_control.c","Algorithm/chassis_follow/chassis_follow.c","Algorithm/pid/pid.c","Algorithm/ramp/ramp.c") },
     @{ Name='shoot_path'; Mock='Tests/can_support'; Files=@('Tests/test_shoot_path.c','Task/cmd/cmd_mapping.c','Task/shoot/shoot_control.c','Modules/motor/dji_motor.c','Modules/motor/dji_protocol.c','Algorithm/pid/pid.c','Algorithm/ramp/ramp.c') },
     @{ Name='cmd'; Mock=''; Files=@('Tests/test_cmd.c') + $algorithm },
     @{ Name='referee'; Mock='Tests/support'; Files=@('Tests/test_referee.c','Modules/referee/referee_protocol.c','Modules/referee/referee.c') },

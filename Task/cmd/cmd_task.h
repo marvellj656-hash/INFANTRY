@@ -8,6 +8,7 @@ ChassisVelocity cmd_build_chassis_command(int16_t ch1, int16_t ch2,
 typedef struct {
   uint32_t online, enabled, sw1, sw2, spin, friction, fire, neutral, auto_aim;
   int32_t ch1, ch2, ch3, ch4, wheel;
+  uint32_t follow;
 } CmdDebug;
 extern volatile CmdDebug debug_cmd;
 void cmd_task_entry(void *argument);

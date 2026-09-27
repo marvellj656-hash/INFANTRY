@@ -24,6 +24,7 @@ static void expect_disabled(const CmdOutput *out)
 {
     assert(!out->chassis.enabled && !out->gimbal.enabled && !out->shoot.enabled);
     assert(!out->spin && !out->shoot.friction && !out->shoot.fire);
+    assert(!out->chassis.follow_gimbal);
     assert(!out->gimbal.auto_aim && out->shoot.mode == SHOOT_STOP);
     near(out->chassis.target.vx, 0);
     near(out->chassis.target.vy, 0);
@@ -58,6 +59,7 @@ static void test_switch_table(void)
         in.remote.channels.sw2 = cases[i].right;
         cmd_map_update(&mapper, &in, &out);
         assert(out.chassis.enabled == cases[i].enabled);
+        assert(out.chassis.follow_gimbal == (cases[i].enabled && cases[i].right==RC_SWITCH_MIDDLE));
         assert(out.gimbal.enabled == cases[i].enabled);
         assert(out.shoot.enabled == cases[i].enabled);
         assert(out.spin == cases[i].spin && out.shoot.friction == cases[i].friction);

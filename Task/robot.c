@@ -13,6 +13,7 @@
 #include "remote/remote.h"
 #include "robot_config.h"
 #include "shoot/shoot_task.h"
+#include "shoot/shoot_config.h"
 #include "task.h"
 /* CubeMX 旧窗口曾把堆恢复为15360：编译时就提醒，避免上电才卡在任务创建失败。 */
 _Static_assert(configTOTAL_HEAP_SIZE >= 32768u,
@@ -69,14 +70,14 @@ static const DjiMotorConfig motor_config[] = {
     {.id = MOTOR_FRICTION_L,
      .type = DJI_M3508,
      .bus = 2,
-     .esc_id = 1,
+     .esc_id = FRICTION_LEFT_ESC_ID,
      .output_limit_raw = 16000,
      .feedback_timeout_ms = ROBOT_MOTOR_FEEDBACK_TIMEOUT_MS,
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS},
     {.id = MOTOR_FRICTION_R,
      .type = DJI_M3508,
      .bus = 2,
-     .esc_id = 2,
+     .esc_id = FRICTION_RIGHT_ESC_ID,
      .output_limit_raw = 16000,
      .feedback_timeout_ms = ROBOT_MOTOR_FEEDBACK_TIMEOUT_MS,
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS},

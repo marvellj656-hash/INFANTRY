@@ -3,6 +3,7 @@
 #include "chassis_task.h"
 #include "chassis_config.h"
 #include "motor/dji_motor.h"
+#include "gimbal/gimbal_task.h"
 #include "robot_config.h"
 #include "bsp_time.h"
 #include "FreeRTOS.h"
@@ -13,6 +14,8 @@ static DjiMotorHandle wheels[4];
 /* 控制器本体：四轮 PID 和斜坡状态直接放这里，不另建调试副本。
  * 只有底盘任务写入；LinkScope 可查看 chassis_controller.pid[0].Iout。 */
 static ChassisController chassis_controller;
+static ChassisFollow follow_controller;
+volatile ChassisFollowOutput debug_follow;
 volatile ControlDebug debug_control;
 volatile ChassisOutput debug_chassis;
 volatile float debug_target_mm_s, debug_ramped_mm_s;
@@ -41,6 +44,11 @@ void chassis_task_entry(void *argument)
     TickType_t wake = xTaskGetTickCount(), previous = wake;
     ChassisCommand command = {0};
     chassis_control_reset(&chassis_controller);
+    const pid_config_t follow_pid = INIT_PID_CONFIG(
+        CHASSIS_FOLLOW_KP, CHASSIS_FOLLOW_KI, CHASSIS_FOLLOW_KD, 0,
+        CHASSIS_FOLLOW_MAX_RAD_S, PID_Derivative_On_Measurement | PID_Integral_Limit);
+    chassis_follow_init(&follow_controller, &follow_pid);
+    uint32_t reference_generation = 0;
     bool previous_tx_ok = true;
     for (;;)
     {
@@ -77,6 +85,25 @@ void chassis_task_entry(void *argument)
         if (!can_ready || !previous_tx_ok)
             faults |= CHASSIS_FAULT_CAN;
         ChassisVelocity target = command.target;
+        GimbalOutput gimbal = {0};
+        bool reference_ok = gimbal_get_state(&gimbal) && gimbal.centered && gimbal.reference_valid;
+        if (reference_generation != gimbal.reference_generation)
+        {
+            reference_generation = gimbal.reference_generation;
+            pid_clear(&follow_controller.pid);
+        }
+        ChassisFollowOutput follow;
+        chassis_follow_update(&follow_controller,
+            CHASSIS_FOLLOW_DIRECTION * gimbal.relative_deg[0], CHASSIS_FOLLOW_DEADBAND_DEG,
+            command.follow_gimbal && reference_ok && faults == 0,
+            (float)elapsed / configTICK_RATE_HZ, &follow);
+        if (command.follow_gimbal)
+        {
+            target.wz = follow.wz_rad_s;
+            if (!follow.active)
+                chassis_controller.velocity.wz = 0; /* 参考失效，清掉旧跟随斜坡。 */
+        }
+        debug_follow = follow;
         ChassisOutput result;
         chassis_control_update(&chassis_controller, target, measured, faults == 0, command.neutral,
                                (float)elapsed / configTICK_RATE_HZ, CHASSIS_BRINGUP_POWER_W,

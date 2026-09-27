@@ -5,6 +5,14 @@
 #define CHASSIS_MAX_YAW_RAD_S 7.0f
 #define CHASSIS_ACCEL_MM_S2 4000.0f
 #define CHASSIS_YAW_ACCEL_RAD_S2 6.0f
+/* 右拨杆中位：云台偏向哪边，车头慢慢跟过去。先用低速参数上车确认方向。
+ * 与旧 RTT 符号一致：新的 relative_deg 已取过编码器负号，所以这里为+1。 */
+#define CHASSIS_FOLLOW_DIRECTION 1.0f
+#define CHASSIS_FOLLOW_KP 0.04f /* (rad/s)/deg */
+#define CHASSIS_FOLLOW_KI 0.0f
+#define CHASSIS_FOLLOW_KD 0.0f
+#define CHASSIS_FOLLOW_DEADBAND_DEG 2.0f
+#define CHASSIS_FOLLOW_MAX_RAD_S 1.5f
 /* 几何及轮序沿用旧工程 omni_calc：电机 0..3 对应 0x201..0x204。 */
 #define CHASSIS_WHEEL_PERIMETER_MM 471.0f
 #define CHASSIS_GEAR_RATIO 19.0f

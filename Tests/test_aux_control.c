@@ -37,7 +37,7 @@ int main(void)
     ShootInput si={.valid=true};ShootCommand sc={.enabled=true,.friction=true,.fire=true,.mode=SHOOT_SINGLE};
     shoot_control_update(&s,&sc,&si,true,0.002f,&so);assert(!so.armed);
     sc.fire=false;shoot_control_update(&s,&sc,&si,true,0.002f,&so);
-    si.rpm[0]=FRICTION_RPM;si.rpm[1]=-FRICTION_RPM;
+    si.rpm[0]=FRICTION_LEFT_DIRECTION*FRICTION_RPM;si.rpm[1]=FRICTION_RIGHT_DIRECTION*FRICTION_RPM;
     for(unsigned i=0;i<400;i++)shoot_control_update(&s,&sc,&si,true,0.002f,&so);
     assert(so.friction_ready);
     sc.fire=true;shoot_control_update(&s,&sc,&si,true,0.002f,&so);

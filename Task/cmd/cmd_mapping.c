@@ -69,7 +69,8 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
       .target = cmd_build_chassis_command(c->ch[0], c->ch[1], 0),
       .received_at_ms = r->received_at_ms,
       .enabled = enabled,
-      .neutral = neutral};
+      .neutral = neutral,
+      .follow_gimbal = enabled && c->sw2 == RC_SWITCH_MIDDLE};
   if (out->spin)
     out->chassis.target.wz = 4.5f;
   out->gimbal = (GimbalCommand){
