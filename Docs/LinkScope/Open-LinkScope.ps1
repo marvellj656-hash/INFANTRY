@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'shoot_stop_baseline')]
+    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'shoot_stop_baseline', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion')]
     [string]$Preset = '',
     [string]$AppDirectory = 'E:/FOQQ/Linkscope/LinkScope-x86-V1.3.0',
     [string]$ElfPath = '',
@@ -10,7 +10,7 @@ param(
 # Settings are copied only after all paths and variable sections have been checked.
 $ErrorActionPreference = 'Stop'
 try {
-    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop')
+    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion')
     if ([string]::IsNullOrWhiteSpace($Preset)) {
         Write-Host 'Choose the signals to preselect in LinkScope:'
         Write-Host '  1. overview - start here: command / IMU / gimbal / shoot'
@@ -20,7 +20,14 @@ try {
         Write-Host '  5. shoot    - friction / trigger gates and output'
         Write-Host '  6. motors   - CAN buses and the five upper motors'
         Write-Host '  7. links    - NUC and referee receive status'
-        Write-Host '  8. shoot_stop - switch / zero output / CAN queue / actual RPM'
+        Write-Host '  8. shoot_stop - friction braking / CAN queue / actual RPM'
+        Write-Host ' 9. follow - follow demand / ramp / feasible speed / measured speed'
+        Write-Host ' 10. follow_pid - ACTUAL gains, P/I/D output and limits'
+        Write-Host ' 11. follow_direction - keeps spinning after releasing Yaw: start here'
+        Write-Host ' 12. chassis_wheels - FL/FR/RL/RR target RPM / measured RPM / output'
+        Write-Host ' 13. auto_aim - SW2 request / block reason / NUC target / gimbal target'
+        Write-Host ' 14. nuc_link - USB / RX heartbeat / target freshness'
+        Write-Host ' 15. nuc_motion - TX angles / angular rates / heartbeat / reference'
         $answer = Read-Host 'Number [1]'
         if ([string]::IsNullOrWhiteSpace($answer)) { $answer = '1' }
         $choice = 0

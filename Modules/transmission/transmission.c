@@ -5,14 +5,18 @@
 #include <string.h>
 
 static TransmissionParser parser;
+static TransmissionTx transmitter;
 static TransmissionState working, published;
 static uint32_t last_frame_ms, last_chunk_ms, partial_started_ms, parsing_received_at_ms;
-static bool frame_seen, target_seen, chunk_seen, transport_ready;
+static bool frame_seen, target_seen, chunk_seen, transport_ready, heartbeat_seen;
 volatile TransmissionDebug debug_transmission;
 
 static void publish(uint32_t now_ms)
 {
     working.age_ms = target_seen ? now_ms - working.received_at_ms : UINT32_MAX;
+    working.heartbeat_age_ms = heartbeat_seen ? now_ms - working.heartbeat_at_ms : UINT32_MAX;
+    working.heartbeat_online = transport_ready && heartbeat_seen &&
+        working.heartbeat_age_ms < TRANSMISSION_HEARTBEAT_TIMEOUT_MS;
     working.online = transport_ready && frame_seen &&
                      now_ms - last_frame_ms < TRANSMISSION_LINK_TIMEOUT_MS;
     working.aim_valid = working.online && target_seen &&
@@ -28,6 +32,9 @@ static void publish(uint32_t now_ms)
     debug_transmission.pitch_deg = working.pitch_deg;
     debug_transmission.raw_target_flag = working.raw_target_flag;
     debug_transmission.heartbeat = working.heartbeat;
+    debug_transmission.heartbeat_at_ms = working.heartbeat_at_ms;
+    debug_transmission.heartbeat_age_ms = working.heartbeat_age_ms;
+    debug_transmission.heartbeat_online = working.heartbeat_online;
     debug_transmission.destination = working.destination;
     debug_transmission.online = working.online;
     debug_transmission.aim_valid = working.aim_valid;
@@ -40,12 +47,16 @@ static void publish(uint32_t now_ms)
 void transmission_init(void)
 {
     transmission_parser_reset(&parser);
+    transmission_tx_init(&transmitter);
     memset(&working, 0, sizeof(working));
     memset(&published, 0, sizeof(published));
     memset((void *)&debug_transmission, 0, sizeof(debug_transmission));
     working.age_ms = published.age_ms = UINT32_MAX;
+    working.heartbeat_age_ms = published.heartbeat_age_ms = UINT32_MAX;
+    debug_transmission.heartbeat_age_ms = UINT32_MAX;
+    debug_transmission.tx_attitude_age_ms = UINT32_MAX;
     last_frame_ms = last_chunk_ms = partial_started_ms = parsing_received_at_ms = 0u;
-    frame_seen = target_seen = chunk_seen = transport_ready = false;
+    frame_seen = target_seen = chunk_seen = transport_ready = heartbeat_seen = false;
 }
 
 void transmission_invalidate_target(void)
@@ -62,10 +73,15 @@ void transmission_service_update(uint32_t now_ms, uint32_t generation, bool read
 {
     if (generation != working.link_generation || !ready)
     {
+        /* 即使USB很快重新ready、任务没看到断开瞬间，也不能沿用旧发送有效标记。 */
+        transmission_service_send(now_ms, false, NULL, NULL, NULL);
         if (generation != working.link_generation)
             debug_transmission.generation_resets++;
         working.link_generation = generation;
-        target_seen = frame_seen = chunk_seen = false;
+        target_seen = frame_seen = chunk_seen = heartbeat_seen = false;
+        working.heartbeat = 0u;
+        working.heartbeat_at_ms = 0u;
+        working.heartbeat_online = false;
         working.aim_valid = working.fire_advice = false;
         working.yaw_deg = working.pitch_deg = 0.0f;
         parser.used = 0u;
@@ -118,6 +134,9 @@ static void accept_frame(const TransmissionFrame *frame, void *context)
     {
         /* 旧实现按固定 31 字节收心跳；同时支持 LEN=1 的正常短心跳。 */
         working.heartbeat = frame->data[0];
+        working.heartbeat_at_ms = parsing_received_at_ms;
+        working.heartbeat_frames++;
+        heartbeat_seen = true;
         debug_transmission.heartbeat_frames++;
     }
     else
@@ -170,8 +189,33 @@ bool transmission_get_state(TransmissionState *out)
     /* 任务被饿住也不能让读者永远看到 valid=true；读副本时再次验时间。 */
     if (out->age_ms != UINT32_MAX)
         out->age_ms = now_ms - out->received_at_ms;
+    if (out->heartbeat_age_ms != UINT32_MAX)
+        out->heartbeat_age_ms = now_ms - out->heartbeat_at_ms;
+    out->heartbeat_online = out->heartbeat_online &&
+        out->heartbeat_age_ms < TRANSMISSION_HEARTBEAT_TIMEOUT_MS;
     out->aim_valid = out->aim_valid && out->age_ms < TRANSMISSION_TARGET_TIMEOUT_MS;
     out->online = out->online && now_ms - out->last_frame_at_ms < TRANSMISSION_LINK_TIMEOUT_MS;
     out->fire_advice = out->fire_advice && out->aim_valid;
     return out->aim_valid;
+}
+
+void transmission_service_send(uint32_t now_ms, bool ready, const TransmissionMotion *motion,
+                               TransmissionSend send, void *context)
+{
+    transmission_tx_update(&transmitter, now_ms, ready, motion, send, context);
+    debug_transmission.tx_frames = transmitter.frames;
+    debug_transmission.tx_busy = transmitter.busy;
+    debug_transmission.tx_invalid_samples = transmitter.invalid_samples;
+    debug_transmission.tx_heartbeat_frames = transmitter.heartbeat_frames;
+    debug_transmission.tx_heartbeat_busy = transmitter.heartbeat_busy;
+    debug_transmission.tx_heartbeat = transmitter.heartbeat;
+    debug_transmission.tx_ready = transmitter.ready;
+    debug_transmission.tx_reference_valid = transmitter.reference_valid;
+    /* 角度字段保留最后一次真实接受的样本，用age/valid说明还能否用它。 */
+    debug_transmission.tx_attitude_age_ms = transmitter.reference_valid && transmitter.motion_sent ?
+        now_ms - transmitter.last_motion_ms : UINT32_MAX;
+    debug_transmission.tx_yaw_deg = transmitter.last_motion.yaw_deg;
+    debug_transmission.tx_pitch_deg = transmitter.last_motion.pitch_deg;
+    debug_transmission.tx_yaw_rate_deg_s = transmitter.last_motion.yaw_rate_deg_s;
+    debug_transmission.tx_pitch_rate_deg_s = transmitter.last_motion.pitch_rate_deg_s;
 }

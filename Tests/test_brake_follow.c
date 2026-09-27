@@ -79,8 +79,11 @@ static void test_brake(void)
 static void test_follow(void)
 {
     ChassisFollow s;ChassisFollowOutput out;
-    const pid_config_t cfg=INIT_PID_CONFIG(CHASSIS_FOLLOW_KP,0,0,0,
-        CHASSIS_FOLLOW_MAX_RAD_S,PID_Integral_Limit);
+    const pid_config_t cfg=CHASSIS_FOLLOW_PID_CONFIG;
+    assert(cfg.Kp==CHASSIS_FOLLOW_KP && cfg.Ki==CHASSIS_FOLLOW_KI);
+    assert(cfg.Kd==CHASSIS_FOLLOW_KD);
+    assert(cfg.IntegralLimit==CHASSIS_FOLLOW_I_LIMIT_RAD_S);
+    assert(cfg.MaxOut==CHASSIS_FOLLOW_MAX_RAD_S);
     chassis_follow_init(&s,&cfg);
     chassis_follow_update(&s,20,2,true,0.002f,&out);
     assert(out.active && fabsf(out.wz_rad_s-0.72f)<0.0001f);
@@ -101,8 +104,44 @@ static void test_follow(void)
     }
     assert(angle<2.5f);
 }
+/* 固定误差只测试积分能否积累、限幅和清零，不模拟整车响应。 */
+static void test_follow_integral(void)
+{
+    ChassisFollow s; ChassisFollowOutput out;
+    pid_config_t cfg=CHASSIS_FOLLOW_PID_CONFIG;
+    cfg.Kp=0.04f; cfg.Ki=1.0f; cfg.Kd=0;
+    cfg.IntegralLimit=0; cfg.MaxOut=1.5f;
+    chassis_follow_init(&s,&cfg);
+    for(unsigned n=0;n<100;n++)
+        chassis_follow_update(&s,12,2,true,0.002f,&out);
+    assert(s.pid.Iout==0);
+    assert(fabsf(out.wz_rad_s-0.4f)<0.0001f);
+    cfg.IntegralLimit=0.15f;
+    chassis_follow_init(&s,&cfg);
+    chassis_follow_update(&s,12,2,true,0.002f,&out);
+    assert(s.pid.Iout>0 && s.pid.Iout<cfg.IntegralLimit);
+    for(unsigned n=0;n<100;n++) {
+        chassis_follow_update(&s,12,2,true,0.002f,&out);
+        assert(s.pid.Iout<=cfg.IntegralLimit);
+    }
+    assert(fabsf(s.pid.Iout-0.15f)<0.0001f);
+    assert(fabsf(out.wz_rad_s-0.55f)<0.0001f);
+    chassis_follow_update(&s,-12,2,true,0.002f,&out);
+    assert(s.pid.Iout<0.15f);
+    chassis_follow_update(&s,12,2,false,0.002f,&out);
+    assert(!out.active && s.pid.Iout==0);
+    chassis_follow_update(&s,12,2,true,0.002f,&out);
+    assert(s.pid.Iout>0);
+    chassis_follow_update(&s,1,2,true,0.002f,&out);
+    assert(out.active && out.wz_rad_s==0 && s.pid.Iout==0);
+    cfg.MaxOut=0.2f;
+    chassis_follow_init(&s,&cfg);
+    for(unsigned n=0;n<100;n++)
+        chassis_follow_update(&s,12,2,true,0.002f,&out);
+    assert(s.pid.Iout==0 && out.wz_rad_s==cfg.MaxOut);
+}
 int main(void)
 {
-    test_brake();test_follow();
-    puts("PASS: brake direction/limit/settling/timeout/disable/loss/rearm; follow sign/wrap/deadband/bounds/invalid reference");
+    test_brake();test_follow();test_follow_integral();
+    puts("PASS: brake direction/limit/settling/timeout/disable/loss/rearm; follow sign/wrap/deadband/bounds/invalid reference/configured integral limit");
 }

@@ -12,6 +12,16 @@ typedef enum {
   RC_SWITCH_DOWN = 2,
   RC_SWITCH_MIDDLE = 3
 } RcSwitch;
+
+/* 自瞄“请求了却没进入”的原因，可同时出现多项。只是观测，不是强制开关。 */
+typedef enum {
+  AUTO_BLOCK_DISABLED = 1u,
+  AUTO_BLOCK_NOT_REQUESTED = 2u,
+  AUTO_BLOCK_GIMBAL_STALE = 4u,
+  AUTO_BLOCK_REFERENCE = 8u,
+  AUTO_BLOCK_NUC_OFFLINE = 16u,
+  AUTO_BLOCK_TARGET_STALE = 32u
+} AutoBlock;
 typedef struct {
   uint16_t previous_keys;
   uint8_t previous_left_switch;
@@ -30,6 +40,8 @@ typedef struct {
   GimbalCommand gimbal;
   ShootCommand shoot;
   bool spin;
+  bool auto_requested;
+  uint32_t auto_block_flags;
   bool redraw_ui; /* R 键上升沿，只是重画请求，不改变电机许可。 */
 } CmdOutput;
 /* 纯映射：不读外设、不收队列。输入用快照，输出交给三个控制任务。 */

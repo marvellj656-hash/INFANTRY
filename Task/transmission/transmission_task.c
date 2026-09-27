@@ -20,12 +20,19 @@ static TransmissionTeam team_from_referee(void)
     return TRANSMISSION_TEAM_UNKNOWN;
 }
 
+/* 任务只负责接线：发送调度不知道USB句柄，只问“能否交出这一帧”。 */
+static bool send_to_nuc(const uint8_t *data, size_t length, void *context)
+{
+    (void)context;
+    return bsp_nuc_send(data, length);
+}
+
 void transmission_task_entry(void *argument)
 {
     (void)argument;
     transmission_init();
     TickType_t wake = xTaskGetTickCount();
-    uint32_t last_tx_ms = 0u, reference_generation = 0u, reference_changed_at_ms = 0u;
+    uint32_t reference_generation = 0u, reference_changed_at_ms = 0u;
     float reference_yaw = 0.0f, reference_pitch = 0.0f, pc_pitch_origin = 0.0f;
     bool had_reference = false, received_reference_once = false;
     for (;;)
@@ -82,25 +89,25 @@ void transmission_task_entry(void *argument)
         }
         transmission_service_update(bsp_time_ms(), bsp_nuc_generation(), bsp_nuc_ready());
 
+        TransmissionMotion motion = {0};
         if (reference_ok)
         {
             /* 保留旧行为：手动GYRO时pitch参考跟随当前姿态，AUTO时冻结。
              * yaw 则始终用归中时的参考；不要在驱动层把这两个约定混成同一种。 */
             if (gimbal.mode == GIMBAL_GYRO)
                 pc_pitch_origin = ins.pitch_deg;
-            if (now_ms - last_tx_ms >= 10u)
-            {
-                uint8_t frame[TRANSMISSION_RPY_FRAME_SIZE];
-                size_t size = transmission_encode_attitude(
-                    frame, sizeof(frame), reference_yaw - ins.yaw_deg,
-                    ins.pitch_deg - pc_pitch_origin, team_from_referee());
-                if (size && bsp_nuc_send(frame, size))
-                    debug_transmission.tx_frames++;
-                else
-                    debug_transmission.tx_busy++;
-                last_tx_ms = now_ms;
-            }
+            /* INS用rad/s，NUC扩展字段用deg/s；yaw随上报角度一起反向。
+             * 这是安装映射后的轴角速度，不是将姿态差分得到的速度。 */
+            motion = (TransmissionMotion){
+                .yaw_deg = reference_yaw - ins.yaw_deg,
+                .pitch_deg = ins.pitch_deg - pc_pitch_origin,
+                .yaw_rate_deg_s = -ins.yaw_rate_rad_s * 57.2957795f,
+                .pitch_rate_deg_s = ins.pitch_rate_rad_s * 57.2957795f,
+                .team = team_from_referee()};
         }
+        /* 心跳100ms、姿态10ms；未归中时传NULL，USB心跳仍正常。 */
+        transmission_service_send(bsp_time_ms(), started && bsp_nuc_ready(),
+                                  reference_ok ? &motion : NULL, send_to_nuc, NULL);
         if (!started)
         {
             vTaskDelay(pdMS_TO_TICKS(1000u));

@@ -125,12 +125,15 @@ static void write_i32_le(uint8_t *out, int32_t value)
         out[i] = (uint8_t)(raw >> (8u * i));
 }
 
-size_t transmission_encode_attitude(uint8_t *out, size_t capacity, float yaw_deg,
-                                    float pitch_deg, TransmissionTeam team)
+size_t transmission_encode_motion(uint8_t *out, size_t capacity, float yaw_deg,
+                                  float pitch_deg, float yaw_rate_deg_s,
+                                  float pitch_rate_deg_s, TransmissionTeam team)
 {
     if (!out || capacity < TRANSMISSION_RPY_FRAME_SIZE || !isfinite(yaw_deg) ||
-        !isfinite(pitch_deg) || fabsf(yaw_deg) > 2000000.0f ||
-        fabsf(pitch_deg) > 180.0f || team < TRANSMISSION_TEAM_UNKNOWN ||
+        !isfinite(pitch_deg) || !isfinite(yaw_rate_deg_s) || !isfinite(pitch_rate_deg_s) ||
+        fabsf(yaw_deg) > 2000000.0f || fabsf(pitch_deg) > 180.0f ||
+        fabsf(yaw_rate_deg_s) > 2000000.0f || fabsf(pitch_rate_deg_s) > 2000000.0f ||
+        team < TRANSMISSION_TEAM_UNKNOWN ||
         team > TRANSMISSION_TEAM_RED)
         return 0u;
     memset(out, 0, TRANSMISSION_RPY_FRAME_SIZE);
@@ -142,7 +145,30 @@ size_t transmission_encode_attitude(uint8_t *out, size_t capacity, float yaw_deg
     write_i32_le(out + 9u, (int32_t)(pitch_deg * 1000.0f));
     /* DATA[9..12] 固定 0：旧代码本来发 0，不把本机扳机状态擅自塞进协议。 */
     write_i32_le(out + 17u, (int32_t)team * 1000);
+    /* 200万的上限用于防止乘1000后溢出int32，不是云台机械限位。 */
+    write_i32_le(out + 21u, (int32_t)(yaw_rate_deg_s * 1000.0f));
+    write_i32_le(out + 25u, (int32_t)(pitch_rate_deg_s * 1000.0f));
     checksum(out, TRANSMISSION_RPY_DATA_SIZE, out + TRANSMISSION_RPY_FRAME_SIZE - 2u,
              out + TRANSMISSION_RPY_FRAME_SIZE - 1u);
     return TRANSMISSION_RPY_FRAME_SIZE;
+}
+
+size_t transmission_encode_attitude(uint8_t *out, size_t capacity, float yaw_deg,
+                                    float pitch_deg, TransmissionTeam team)
+{
+    /* 旧调用仍得到逐字节相同的报文，方便旧NUC和固定向量回归测试。 */
+    return transmission_encode_motion(out, capacity, yaw_deg, pitch_deg, 0.0f, 0.0f, team);
+}
+
+size_t transmission_encode_heartbeat(uint8_t *out, size_t capacity, uint8_t sequence)
+{
+    if (!out || capacity < TRANSMISSION_HEARTBEAT_FRAME_SIZE)
+        return 0u;
+    out[0] = TRANSMISSION_HEAD;
+    out[1] = TRANSMISSION_PC_ADDRESS;
+    out[2] = TRANSMISSION_HEARTBEAT_ID;
+    out[3] = 1u;
+    out[4] = sequence;
+    checksum(out, 1u, out + 5u, out + 6u);
+    return TRANSMISSION_HEARTBEAT_FRAME_SIZE;
 }

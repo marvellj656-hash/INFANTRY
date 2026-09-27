@@ -102,7 +102,9 @@ void gimbal_task_entry(void *argument) {
                       .yaw_output = result.raw[0],
                       .pitch_output = result.raw[1],
                       .yaw_relative_deg = input.relative_deg[0],
-                      .pitch_relative_deg = input.relative_deg[1]};
+                      .pitch_relative_deg = input.relative_deg[1],
+                      .yaw_target_deg = result.target_deg[0],
+                      .pitch_target_deg = result.target_deg[1]};
     taskENTER_CRITICAL();
     state = result;
     published_at = bsp_time_ms();

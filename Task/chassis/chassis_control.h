@@ -13,6 +13,9 @@ typedef struct
 typedef struct
 {
     ChassisVelocity target, velocity;
+    /* 把最终 target_rpm 重新换算成车体要求速度。高速平移占满轮速时，
+     * 旋转也会被一起缩小；此字段显示缩小后的要求，不是实测车速。 */
+    ChassisVelocity feasible_velocity;
     float target_rpm[4], measured_rpm[4];
     int16_t current_raw[4];
     float power_scale, estimated_power_w, budget_w;

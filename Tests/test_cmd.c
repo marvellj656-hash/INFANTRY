@@ -46,10 +46,10 @@ static void test_switch_table(void)
         {2, 1, false, false, false, SHOOT_STOP},
         {1, 3, true, false, false, SHOOT_SINGLE},
         {3, 3, true, false, true, SHOOT_SINGLE},
-        {2, 3, true, false, true, SHOOT_CONTINUOUS},
-        {1, 2, true, true, false, SHOOT_SINGLE},
-        {3, 2, true, true, true, SHOOT_SINGLE},
-        {2, 2, true, true, true, SHOOT_CONTINUOUS}
+        {2, 3, true, true, true, SHOOT_SINGLE},
+        {1, 2, true, false, false, SHOOT_SINGLE},
+        {3, 2, true, false, true, SHOOT_SINGLE},
+        {2, 2, true, true, true, SHOOT_SINGLE}
     };
     for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
         CmdMapper mapper = {0};
@@ -59,14 +59,27 @@ static void test_switch_table(void)
         in.remote.channels.sw2 = cases[i].right;
         cmd_map_update(&mapper, &in, &out);
         assert(out.chassis.enabled == cases[i].enabled);
-        assert(out.chassis.follow_gimbal == (cases[i].enabled && cases[i].right==RC_SWITCH_MIDDLE));
+        assert(out.chassis.follow_gimbal == (cases[i].enabled && !cases[i].spin));
         assert(out.gimbal.enabled == cases[i].enabled);
         assert(out.shoot.enabled == cases[i].enabled);
         assert(out.spin == cases[i].spin && out.shoot.friction == cases[i].friction);
+        assert(out.auto_requested == (cases[i].right==RC_SWITCH_DOWN));
+        assert(!out.gimbal.auto_aim); /* no fresh target yet */
         assert(out.shoot.mode == cases[i].mode && !out.shoot.fire);
         assert(out.chassis.neutral && out.gimbal.neutral);
         assert(out.chassis.received_at_ms == 1234);
         assert(out.gimbal.received_at_ms == 1234 && out.shoot.received_at_ms == 1234);
+        /* 同一组开关再提供新鲜目标：左上允许AUTO，但仍不能开摩擦。 */
+        in.gimbal_fresh = true;
+        in.gimbal.centered = in.gimbal.reference_valid = true;
+        in.vision.online = in.vision.aim_valid = true;
+        in.vision.fire_advice = true;
+        cmd_map_update(&mapper, &in, &out);
+        assert(out.gimbal.auto_aim ==
+               (cases[i].enabled && cases[i].right == RC_SWITCH_DOWN));
+        assert(out.shoot.friction == cases[i].friction && !out.shoot.fire);
+        assert(out.spin == cases[i].spin);
+        assert(out.chassis.follow_gimbal == (cases[i].enabled && !cases[i].spin));
     }
 }
 
@@ -135,7 +148,8 @@ static void test_neutral_axes_and_spin_startup(void)
     near(out.gimbal.pitch_rate_deg_s, -180);
 
     in.remote.channels.ch[2] = in.remote.channels.ch[3] = 0;
-    in.remote.channels.sw2 = RC_SWITCH_DOWN;
+    in.remote.channels.sw1 = RC_SWITCH_DOWN;
+    in.remote.channels.sw2 = RC_SWITCH_MIDDLE;
     cmd_map_update(&mapper, &in, &out);
     assert(out.spin && out.chassis.neutral && out.chassis.target.wz > 0);
     /* Exercise the actual chassis gate: a nonzero spin target must not prevent rearming. */
@@ -203,7 +217,7 @@ static void test_trigger_and_keyboard(void)
     assert(out.shoot.mode == SHOOT_SINGLE);
     in.remote.channels.sw1 = RC_SWITCH_DOWN;
     cmd_map_update(&mapper, &in, &out);
-    assert(out.shoot.mode == SHOOT_CONTINUOUS);
+    assert(out.spin && out.shoot.mode == SHOOT_SINGLE);
     in.remote.channels.keys = (1u << 10);
     cmd_map_update(&mapper, &in, &out);
     assert(!out.shoot.friction);
@@ -289,8 +303,55 @@ static void test_auto_reference_and_recovery(void)
     expect_disabled(&out);
 }
 
+static void test_switch_auto_and_spin(void)
+{
+    CmdMapper mapper={0};CmdInput in=manual_input();CmdOutput out;
+    in.gimbal_fresh=true;
+    in.gimbal.centered=in.gimbal.reference_valid=true;
+    in.gimbal.target_deg[0]=100;in.gimbal.target_deg[1]=10;
+    in.vision.online=in.vision.aim_valid=true;
+    in.vision.yaw_deg=5;in.vision.pitch_deg=-2;
+    in.vision.fire_advice=true;
+    in.remote.channels.sw1=RC_SWITCH_MIDDLE;
+    cmd_map_update(&mapper,&in,&out);
+    assert(out.chassis.follow_gimbal && !out.gimbal.auto_aim && !out.spin);
+    assert(out.auto_block_flags & AUTO_BLOCK_NOT_REQUESTED);
+    in.remote.channels.sw2=RC_SWITCH_DOWN;
+    cmd_map_update(&mapper,&in,&out);
+    assert(out.auto_requested && out.gimbal.auto_aim && out.auto_block_flags==0);
+    assert(out.chassis.follow_gimbal && !out.spin && !out.shoot.fire);
+    near(out.gimbal.auto_yaw_deg,105);near(out.gimbal.auto_pitch_deg,8);
+    for(unsigned i=0;i<30;i++) {
+        in.gimbal.target_deg[0]=out.gimbal.auto_yaw_deg;
+        cmd_map_update(&mapper,&in,&out);
+        near(out.gimbal.auto_yaw_deg,105); /* no repeated accumulation */
+    }
+    in.remote.channels.sw1=RC_SWITCH_DOWN;
+    cmd_map_update(&mapper,&in,&out);
+    assert(out.spin && !out.chassis.follow_gimbal && out.gimbal.auto_aim);
+    assert(out.shoot.mode==SHOOT_SINGLE && !out.shoot.fire);
+    in.vision.aim_valid=false;in.remote.channels.ch[2]=100;
+    cmd_map_update(&mapper,&in,&out);
+    assert(!out.gimbal.auto_aim && out.auto_requested);
+    assert(out.auto_block_flags & AUTO_BLOCK_TARGET_STALE);
+    assert(out.gimbal.yaw_rate_deg_s>0); /* target timeout returns manual control */
+    in.vision.aim_valid=true;in.vision.online=false;
+    cmd_map_update(&mapper,&in,&out);
+    assert(!out.gimbal.auto_aim && (out.auto_block_flags&AUTO_BLOCK_NUC_OFFLINE));
+    in.vision.online=true;in.gimbal_fresh=false;
+    cmd_map_update(&mapper,&in,&out);
+    assert(!out.gimbal.auto_aim && (out.auto_block_flags&AUTO_BLOCK_GIMBAL_STALE));
+    in.gimbal_fresh=true;in.gimbal.reference_valid=false;
+    cmd_map_update(&mapper,&in,&out);
+    assert(!out.gimbal.auto_aim && (out.auto_block_flags&AUTO_BLOCK_REFERENCE));
+    in.remote.channels.sw2=RC_SWITCH_UP;
+    cmd_map_update(&mapper,&in,&out);expect_disabled(&out);
+    assert(out.auto_block_flags&AUTO_BLOCK_DISABLED);
+}
+
 int main(void)
 {
+    test_switch_auto_and_spin();
     test_switch_table();
     test_loss_and_invalid_switches();
     test_neutral_axes_and_spin_startup();

@@ -101,6 +101,7 @@ int main(void)
     start();
     for(unsigned i=0;i<400;i++) step(true);
     input.remote.channels.sw1=RC_SWITCH_DOWN;
+    input.remote.channels.keys=(1u<<14); /* V explicitly selects continuous; SW1 now spins */
     input.remote.channels.wheel=660; step(true);
     assert(output.friction_ready && output.raw[2]>0);
     input.remote.channels.sw2=RC_SWITCH_UP; step(true); expect_zero();

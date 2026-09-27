@@ -10,9 +10,16 @@
 #define CHASSIS_FOLLOW_DIRECTION 1.0f
 #define CHASSIS_FOLLOW_KP 0.04f /* (rad/s)/deg */
 #define CHASSIS_FOLLOW_KI 0.0f
+/* 积分项也是角速度：只增大 Ki、但此处仍为 0，积分就仍然被夹在 0。 */
+#define CHASSIS_FOLLOW_I_LIMIT_RAD_S 0.0f
 #define CHASSIS_FOLLOW_KD 0.0f
 #define CHASSIS_FOLLOW_DEADBAND_DEG 2.0f
 #define CHASSIS_FOLLOW_MAX_RAD_S 1.5f
+/* 任务和主机测试共用这一份配置，避免任务里藏着另一个积分限幅。 */
+#define CHASSIS_FOLLOW_PID_CONFIG \
+    INIT_PID_CONFIG(CHASSIS_FOLLOW_KP, CHASSIS_FOLLOW_KI, CHASSIS_FOLLOW_KD, \
+                    CHASSIS_FOLLOW_I_LIMIT_RAD_S, CHASSIS_FOLLOW_MAX_RAD_S, \
+                    PID_Derivative_On_Measurement | PID_Integral_Limit)
 /* 几何及轮序沿用旧工程 omni_calc：电机 0..3 对应 0x201..0x204。 */
 #define CHASSIS_WHEEL_PERIMETER_MM 471.0f
 #define CHASSIS_GEAR_RATIO 19.0f

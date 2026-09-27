@@ -16,6 +16,7 @@ static DjiMotorHandle wheels[4];
 static ChassisController chassis_controller;
 static ChassisFollow follow_controller;
 volatile ChassisFollowOutput debug_follow;
+volatile ChassisFollowConfigDebug debug_follow_config;
 volatile ControlDebug debug_control;
 volatile ChassisOutput debug_chassis;
 volatile float debug_target_mm_s, debug_ramped_mm_s;
@@ -44,9 +45,10 @@ void chassis_task_entry(void *argument)
     TickType_t wake = xTaskGetTickCount(), previous = wake;
     ChassisCommand command = {0};
     chassis_control_reset(&chassis_controller);
-    const pid_config_t follow_pid = INIT_PID_CONFIG(
-        CHASSIS_FOLLOW_KP, CHASSIS_FOLLOW_KI, CHASSIS_FOLLOW_KD, 0,
-        CHASSIS_FOLLOW_MAX_RAD_S, PID_Derivative_On_Measurement | PID_Integral_Limit);
+    const pid_config_t follow_pid = CHASSIS_FOLLOW_PID_CONFIG;
+    debug_follow_config = (ChassisFollowConfigDebug){
+        .deadband_deg = CHASSIS_FOLLOW_DEADBAND_DEG,
+        .yaw_accel_rad_s2 = CHASSIS_YAW_ACCEL_RAD_S2};
     chassis_follow_init(&follow_controller, &follow_pid);
     uint32_t reference_generation = 0;
     bool previous_tx_ok = true;

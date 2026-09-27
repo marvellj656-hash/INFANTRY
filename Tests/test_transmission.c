@@ -49,6 +49,147 @@ static void feed(const uint8_t *bytes, size_t length, uint32_t time)
     transmission_service_receive(bytes, length, time, time);
 }
 
+
+static void test_motion_vectors(void)
+{
+    uint8_t out[TRANSMISSION_RPY_FRAME_SIZE];
+    const uint8_t expected[] = {
+        0xff, 0x01, 0x20, 0x19, 0x00, 0x24, 0xfa, 0xff, 0xff,
+        0xca, 0x08, 0, 0, 0, 0, 0, 0, 0xe8, 0x03, 0, 0,
+        0x94, 0x1d, 0xfe, 0xff, /* -123500: -123.500 deg/s */
+        0xc2, 0xb0, 0, 0,       /* +45250: +45.250 deg/s */
+        0x32, 0x48};
+    assert(transmission_encode_motion(out, sizeof(out), -1.5f, 2.25f,
+        -123.5f, 45.25f, TRANSMISSION_TEAM_RED) == sizeof(expected));
+    assert(memcmp(out, expected, sizeof(expected)) == 0);
+    assert(transmission_checksum_valid(out, sizeof(out)));
+    assert(!transmission_encode_motion(out, sizeof(out), 0, 0, NAN, 0, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), 0, 0, 0, INFINITY, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), INFINITY, 0, 0, 0, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), 0, NAN, 0, 0, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), 0, 181, 0, 0, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), 2000001, 0, 0, 0, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), 0, 0, 2000001, 0, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), 0, 0, 0, -2000001, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(out, sizeof(out), 0, 0, 0, 0, (TransmissionTeam)2));
+    assert(!transmission_encode_motion(out, sizeof(out)-1u, 0, 0, 0, 0, TRANSMISSION_TEAM_RED));
+    assert(!transmission_encode_motion(NULL, sizeof(out), 0, 0, 0, 0, TRANSMISSION_TEAM_RED));
+    assert(transmission_encode_motion(out, sizeof(out), -2000000, -180, 2000000,
+        -2000000, TRANSMISSION_TEAM_UNKNOWN) == sizeof(out));
+    const uint8_t expected_heartbeat[] = {0xff, 1, 0xf0, 1, 42, 0x1b, 0x0c};
+    assert(transmission_encode_heartbeat(out, sizeof(out), 42) == sizeof(expected_heartbeat));
+    assert(memcmp(out, expected_heartbeat, sizeof(expected_heartbeat)) == 0);
+    assert(!transmission_encode_heartbeat(out, 6u, 42));
+    assert(!transmission_encode_heartbeat(NULL, 7u, 42));
+}
+
+static void test_heartbeat_freshness(void)
+{
+    TransmissionState state;
+    uint8_t target[TRANSMISSION_RPY_FRAME_SIZE];
+    target_frame(target);
+    uint8_t heartbeat[7] = {0xff, 4, 0xf0, 1, 42, 0x1e, 0x12};
+    transmission_init();
+    fake_now = 100u;
+    transmission_service_update(fake_now, 1u, true);
+    assert(!transmission_get_state(&state));
+    assert(!state.heartbeat_online && state.heartbeat_age_ms == UINT32_MAX);
+    feed(heartbeat, sizeof(heartbeat), 100u);
+    assert(!transmission_get_state(&state));
+    assert(state.online && state.heartbeat_online && state.heartbeat_at_ms == 100u);
+    assert(state.heartbeat_age_ms == 0u && state.heartbeat_frames == 1u);
+    assert(debug_transmission.heartbeat_frames == 1u && debug_transmission.heartbeat_online);
+    feed(target, sizeof(target), 590u);
+    fake_now = 600u; /* transmission任务没有再运行，getter仍撤销过期心跳。 */
+    assert(transmission_get_state(&state));
+    assert(state.online && !state.heartbeat_online && state.heartbeat_age_ms == 500u);
+    /* 不停的目标包可令online=1，但不能谎报“还在收到F0心跳”。 */
+    feed(target, sizeof(target), 601u);
+    assert(transmission_get_state(&state) && !state.heartbeat_online);
+    assert(debug_transmission.heartbeat_age_ms == 501u && !debug_transmission.heartbeat_online);
+
+    uint8_t padded[TRANSMISSION_RPY_FRAME_SIZE] = {0xff, 4, 0xf0, 25, 43};
+    fix_checksum(padded);
+    feed(padded, sizeof(padded), 701u);
+    assert(!transmission_get_state(&state)); /* 心跳不能挽救100ms旧目标。 */
+    assert(state.heartbeat_online && state.heartbeat == 43u && state.heartbeat_frames == 2u);
+    assert(!state.fire_advice);
+    transmission_invalidate_target();
+    assert(!transmission_get_state(&state) && state.heartbeat_online);
+    transmission_service_update(702u, 2u, true);
+    fake_now = 702u;
+    assert(!transmission_get_state(&state));
+    assert(!state.heartbeat_online && state.heartbeat_age_ms == UINT32_MAX && state.heartbeat == 0u);
+    assert(state.heartbeat_frames == 2u); /* 历史统计保留，旧的心跳状态清除。 */
+    feed(heartbeat, sizeof(heartbeat), 703u);
+    assert(!transmission_get_state(&state) && state.heartbeat_online);
+    transmission_service_update(704u, 2u, false);
+    fake_now = 704u;
+    assert(!transmission_get_state(&state) && !state.heartbeat_online && !state.online);
+    transmission_service_update(705u, 2u, true);
+    fake_now = 705u;
+    assert(!transmission_get_state(&state) && !state.heartbeat_online);
+
+    /* 短心跳同样支持时间绕回，500ms界限仍然严格。 */
+    fake_now = UINT32_MAX - 30u;
+    transmission_service_update(fake_now, 3u, true);
+    feed(heartbeat, sizeof(heartbeat), fake_now);
+    fake_now = 20u;
+    assert(!transmission_get_state(&state) && state.heartbeat_online && state.heartbeat_age_ms == 51u);
+    fake_now = 469u;
+    assert(!transmission_get_state(&state) && !state.heartbeat_online && state.heartbeat_age_ms == 500u);
+}
+
+static bool send_busy;
+static bool accept_send(const uint8_t *data, size_t length, void *context)
+{
+    (void)context;
+    assert(transmission_checksum_valid(data, length));
+    return !send_busy;
+}
+static void test_send_debug(void)
+{
+    transmission_init();
+    TransmissionMotion motion = {.yaw_deg=-1.5f, .pitch_deg=2.25f,
+        .yaw_rate_deg_s=-123.5f, .pitch_rate_deg_s=45.25f, .team=TRANSMISSION_TEAM_RED};
+    transmission_service_send(0u, true, NULL, accept_send, NULL);
+    assert(debug_transmission.tx_heartbeat_frames == 1u && debug_transmission.tx_frames == 0u);
+    assert(debug_transmission.tx_ready && !debug_transmission.tx_reference_valid);
+    assert(debug_transmission.tx_attitude_age_ms == UINT32_MAX);
+    transmission_service_send(2u, true, &motion, accept_send, NULL);
+    assert(debug_transmission.tx_frames == 1u && debug_transmission.tx_yaw_deg == -1.5f);
+    assert(debug_transmission.tx_reference_valid && debug_transmission.tx_attitude_age_ms == 0u);
+    assert(debug_transmission.tx_yaw_rate_deg_s == -123.5f);
+    assert(debug_transmission.tx_pitch_rate_deg_s == 45.25f);
+    send_busy = true;
+    motion.yaw_deg = -2.0f;
+    transmission_service_send(12u, true, &motion, accept_send, NULL);
+    assert(debug_transmission.tx_busy == 1u && debug_transmission.tx_yaw_deg == -1.5f);
+    assert(debug_transmission.tx_attitude_age_ms == 10u);
+    transmission_service_send(100u, true, &motion, accept_send, NULL);
+    assert(debug_transmission.tx_heartbeat_busy == 1u && debug_transmission.tx_heartbeat_frames == 1u);
+    send_busy = false;
+    transmission_service_send(102u, true, &motion, accept_send, NULL);
+    assert(debug_transmission.tx_heartbeat == 1u && debug_transmission.tx_heartbeat_frames == 2u);
+    transmission_service_send(104u, true, &motion, accept_send, NULL);
+    assert(debug_transmission.tx_yaw_deg == -2.0f && debug_transmission.tx_frames == 2u);
+    transmission_service_send(106u, true, NULL, accept_send, NULL);
+    assert(!debug_transmission.tx_reference_valid && debug_transmission.tx_attitude_age_ms == UINT32_MAX);
+    assert(debug_transmission.tx_yaw_deg == -2.0f);
+    transmission_service_send(108u, false, &motion, accept_send, NULL);
+    assert(!debug_transmission.tx_ready && !debug_transmission.tx_reference_valid);
+    assert(debug_transmission.tx_attitude_age_ms == UINT32_MAX);
+    transmission_service_send(110u, true, &motion, accept_send, NULL);
+    transmission_service_send(112u, true, &motion, accept_send, NULL);
+    assert(debug_transmission.tx_reference_valid && debug_transmission.tx_attitude_age_ms == 0u);
+    transmission_service_update(114u, 123u, true); /* 任务未看到ready=false的快速重连。 */
+    assert(!debug_transmission.tx_ready && debug_transmission.tx_attitude_age_ms == UINT32_MAX);
+    unsigned heartbeats = debug_transmission.tx_heartbeat_frames;
+    transmission_service_send(114u, true, &motion, accept_send, NULL);
+    assert(debug_transmission.tx_heartbeat_frames == heartbeats + 1u);
+    assert(debug_transmission.tx_attitude_age_ms == UINT32_MAX);
+}
+
 int main(void)
 {
     uint8_t frame[TRANSMISSION_RPY_FRAME_SIZE];
@@ -162,6 +303,9 @@ int main(void)
     assert(transmission_get_state(&state) && state.age_ms == 51u);
     fake_now = 70u;
     assert(!transmission_get_state(&state));
-    puts("transmission: BCP vectors, stream resync, timeout, generations and bounds passed");
+    test_motion_vectors();
+    test_heartbeat_freshness();
+    test_send_debug();
+    puts("transmission: legacy/motion vectors, stream, independent heartbeat, timeout and generations passed");
     return 0;
 }

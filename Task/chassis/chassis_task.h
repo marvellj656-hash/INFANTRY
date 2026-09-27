@@ -29,6 +29,12 @@ typedef struct
 extern volatile ControlDebug debug_control;
 extern volatile ChassisOutput debug_chassis;
 extern volatile ChassisFollowOutput debug_follow;
+typedef struct
+{
+    float deadband_deg, yaw_accel_rad_s2;
+} ChassisFollowConfigDebug;
+/* 只供 LinkScope 看当前编译参数。控制器不读取此副本，修改它不会调参。 */
+extern volatile ChassisFollowConfigDebug debug_follow_config;
 bool chassis_init(void); /* 只创建命令队列，不创建任务。 */
 bool chassis_set_command(const ChassisCommand *command);
 void chassis_task_entry(void *argument);

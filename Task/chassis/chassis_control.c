@@ -73,6 +73,7 @@ void chassis_control_update(ChassisController *s, ChassisVelocity target, const 
     out->velocity = s->velocity;
     out->armed = 1;
     omni_inverse_kinematics(s->velocity, &geometry, out->target_rpm);
+    out->feasible_velocity = omni_forward_kinematics(out->target_rpm, &geometry);
 
     float raw[4], old_i[4];
     for (unsigned i = 0; i < 4; ++i)

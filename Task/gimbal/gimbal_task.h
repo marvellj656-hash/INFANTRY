@@ -15,6 +15,8 @@ typedef struct {
       command_age_ms;
   int32_t yaw_output, pitch_output;
   float yaw_relative_deg, pitch_relative_deg;
+  /* 最终目标：GYRO/AUTO与INS同参考；INIT归中阶段使用编码器参考。 */
+  float yaw_target_deg, pitch_target_deg;
 } GimbalDebug;
 extern volatile GimbalDebug debug_gimbal;
 bool gimbal_init(void);

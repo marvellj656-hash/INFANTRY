@@ -15,6 +15,7 @@
 #define TRANSMISSION_RPY_DATA_SIZE 25u
 #define TRANSMISSION_MAX_DATA_SIZE 36u
 #define TRANSMISSION_RPY_FRAME_SIZE (TRANSMISSION_RPY_DATA_SIZE + 6u)
+#define TRANSMISSION_HEARTBEAT_FRAME_SIZE 7u
 #define TRANSMISSION_MAX_FRAME_SIZE (TRANSMISSION_MAX_DATA_SIZE + 6u)
 
 typedef enum
@@ -52,6 +53,14 @@ bool transmission_decode_target(const TransmissionFrame *frame, TransmissionTarg
 /* yaw/pitch 单位是度。浮点数先乘 1000 变成整数，再按小端写入，不直接传 float。 */
 size_t transmission_encode_attitude(uint8_t *out, size_t capacity, float yaw_deg,
                                     float pitch_deg, TransmissionTeam team);
+/* OMNI9_26扩展：保留31字节长度和原角度/队伍位置，DATA[17..24]改传角速度。
+ * 角速度单位度/秒，乘1000写有符号小端整数；旧RTT没有定义这两个保留字段。
+ * 角度/速度使用同一套NUC方向，调用者负责方向和rad/s到deg/s换算。 */
+size_t transmission_encode_motion(uint8_t *out, size_t capacity, float yaw_deg,
+                                  float pitch_deg, float yaw_rate_deg_s,
+                                  float pitch_rate_deg_s, TransmissionTeam team);
+/* MCU->NUC短心跳：FF 01 F0 01 sequence SC AC；序号按uint8循环。 */
+size_t transmission_encode_heartbeat(uint8_t *out, size_t capacity, uint8_t sequence);
 bool transmission_checksum_valid(const uint8_t *frame, size_t length);
 
 #endif

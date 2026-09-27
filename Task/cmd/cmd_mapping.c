@@ -63,14 +63,16 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
   }
   s->previous_keys = c->keys;
   s->previous_left_switch = c->sw1;
-  out->spin = enabled && c->sw2 == RC_SWITCH_DOWN;
+  /* SW2 管总模式：上放松、中手动、下自瞄；SW1 下位管小陀螺。
+   * 两个开关独立，所以可以“跟随+自瞄”也可以“小陀螺+自瞄”。 */
+  out->spin = enabled && c->sw1 == RC_SWITCH_DOWN;
   out->chassis = (ChassisCommand){
-      /* CH3 只转云台。小陀螺由右拨杆选择，避免一根摇杆同时转两套机构。 */
+      /* CH3 只转云台；底盘旋转由跟随算法或SW1的小陀螺模式产生。 */
       .target = cmd_build_chassis_command(c->ch[0], c->ch[1], 0),
       .received_at_ms = r->received_at_ms,
       .enabled = enabled,
       .neutral = neutral,
-      .follow_gimbal = enabled && c->sw2 == RC_SWITCH_MIDDLE};
+      .follow_gimbal = enabled && !out->spin};
   if (out->spin)
     out->chassis.target.wz = 4.5f;
   out->gimbal = (GimbalCommand){
@@ -79,9 +81,20 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
       .yaw_rate_deg_s = channel_axis(c->ch[2]) * 180.0f + c->mouse_x * 0.3f,
       .pitch_rate_deg_s = channel_axis(c->ch[3]) * 180.0f + c->mouse_y * 0.2f,
       .received_at_ms = r->received_at_ms};
-  bool auto_aim = enabled && c->mouse_right && in->gimbal_fresh &&
-                  in->gimbal.centered && in->gimbal.reference_valid &&
-                  in->vision.aim_valid;
+  out->auto_requested = c->sw2 == RC_SWITCH_DOWN || c->mouse_right;
+  if (!enabled)
+    out->auto_block_flags |= AUTO_BLOCK_DISABLED;
+  if (!out->auto_requested)
+    out->auto_block_flags |= AUTO_BLOCK_NOT_REQUESTED;
+  if (!in->gimbal_fresh)
+    out->auto_block_flags |= AUTO_BLOCK_GIMBAL_STALE;
+  if (!in->gimbal.centered || !in->gimbal.reference_valid)
+    out->auto_block_flags |= AUTO_BLOCK_REFERENCE;
+  if (!in->vision.online)
+    out->auto_block_flags |= AUTO_BLOCK_NUC_OFFLINE;
+  if (!in->vision.aim_valid)
+    out->auto_block_flags |= AUTO_BLOCK_TARGET_STALE;
+  bool auto_aim = out->auto_block_flags == 0;
   if (auto_aim) {
     /* 沿用旧 NUC 接口：角度是相对于进入 AUTO 时的手动目标。
      * 只在入口记一次，不能每圈累加同一包偏移。重连/IMU重置后重建参考。 */
@@ -104,8 +117,8 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
       .enabled = enabled,
       .friction = friction,
       .fire = enabled && (c->mouse_left || c->wheel >= 200 || c->wheel <= -200),
-      .mode = c->sw1 == RC_SWITCH_DOWN || s->continuous_key ? SHOOT_CONTINUOUS
-                                                            : SHOOT_SINGLE,
+      /* SW1不再选择连发。保留V键显式切换连发，拨轮/鼠标仍需人为触发。 */
+      .mode = s->continuous_key ? SHOOT_CONTINUOUS : SHOOT_SINGLE,
       .received_at_ms = r->received_at_ms};
   if (c->wheel <= -200)
     out->shoot.mode = SHOOT_REVERSE;

@@ -25,7 +25,8 @@ flowchart LR
 | `Bsp/nuc` | USB FS / CDC 枚举、收发字节、掉线和重连；不理解目标角度 |
 | `Modules/transmission/transmission_protocol.*` | 纯字节协议；不用 FreeRTOS 和 HAL |
 | `Modules/transmission/transmission.*` | 保存角度/心跳，做超时，发布完整快照 |
-| `Task/transmission` | 搬运输入，读 INS/云台/裁判系统，周期回报姿态 |
+| `Modules/transmission/transmission_tx.*` | 纯发送节拍：心跳、姿态、busy重试；不用RTOS/HAL |
+| `Task/transmission` | 搬运输入，读 INS/云台/裁判系统，提供角度/角速度/参考状态 |
 | `Middlewares/ST/STM32_USB_Device_Library` | 本机 STM32Cube F4 V1.28.3 的 ST USB Core + CDC 原始库，保留 LICENSE |
 
 ## 接线、时钟与枚举
@@ -39,7 +40,7 @@ flowchart LR
 - 初始化在任务中执行，不能套长临界区：HAL 初始化等待毫秒时间，关中断等待可能永远走不出来。
 - CDC 类对象静态分配；发送内容先复制到长期有效的 buffer。USB 还在发上一包时返回 busy，不等、不覆盖，不把任务局部数组的失效地址交给 USB。
 
-## 和旧 NUC 一致的字节协议
+## BCP协议：保留旧字段，扩展角速度与主动心跳
 
 **BCP 不是裁判系统协议；没有 CRC，也没有直接传 IEEE float。**
 
@@ -62,7 +63,8 @@ flowchart LR
 | 5..8 | pitch，int32 小端 /1000 | pitch，度×1000 转 int32 小端 |
 | 9..12 | 开火建议，0 或 1000 | 固定 0，沿用旧程序 |
 | 13..16 | 当前不使用 | 队伍颜色×1000：红=1000、蓝=0、未知=−1000 |
-| 17..24 | 保留 | 填 0 |
+| 17..20 | 保留 | 新增 yaw 轴角速度，度/秒×1000，int32小端 |
+| 21..24 | 保留 | 新增 pitch 轴角速度，度/秒×1000，int32小端 |
 
 SC/AC 要逐字节模 256，规则与旧 `Check_Rpy()` 一致：
 
@@ -74,7 +76,7 @@ for 每一个 DATA 字节:
     AC += SC
 ```
 
-关键向量：yaw=−1.5°、pitch=2.25°、红方，发送整帧为：
+兼容向量：yaw=−1.5°、pitch=2.25°、红方、两个角速度为0，发送整帧为：
 
 ```text
 FF 01 20 19 00 24 FA FF FF CA 08 00 00 00 00 00
@@ -96,6 +98,7 @@ FF 01 20 19 00 24 FA FF FF CA 08 00 00 00 00 00
 
 - **接收**：yaw/pitch 是传给 cmd 的相对角度。进入 AUTO 时，cmd 锁存当时手动云台目标角；后续绝对目标为“锁存角 + NUC 接收角”。接收模块不把当前 INS 角不断叠加，避免重复累加越转越远。
 - **发送 yaw**：归中时的 INS yaw − 当前 INS yaw，沿用旧取负方向。
+- **发送角速度**：Yaw为 `-INS.yaw_rad_s×180/π`，Pitch为 `INS.pitch_rad_s×180/π`，与旧姿态轴方向一致。这是陀螺仪轴角速度，不宣称是完整欧拉角导数。手动时pitch参考不断更新，回报角度接近0但轴角速度可非0，这是参考约定，不是传错数。
 - **发送 pitch**：手动 GYRO 时持续刷新 pitch 参考，进入 AUTO 后冻结最近手动 pitch；回报当前 pitch − 冻结参考。因此手动模式回报 pitch 接近 0。这对应旧云台在 GYRO 中更新 `pit_offset_angle`、AUTO 中不更新的行为。
 - 归中未完成、INS 无效或参考代次不匹配时不发送伪姿态。重新归中或 INS 重启后作废旧目标，等新的目标字节。
 - 裁判系统 robot_id 新鲜时识别红 1..11、蓝 101..111；没收到/过期/未知 ID 时发 UNKNOWN=−1。不会再把启动时 ID=0 当作红方。
@@ -136,3 +139,26 @@ FF 01 20 19 00 24 FA FF FF CA 08 00 00 00 00 00
 `main` 调用 `MX_USB_OTG_FS_PCD_Init`；`Core/Src/usb_otg.c` 唯一拥有 PCD 句柄和 MSP；`stm32f4xx_it.c` 唯一拥有 OTG_FS 中断。Bsp 的 `USBD_LL_Init` 只关联 USB Device/PCD 对象并配置 FIFO，失败重试时才按需重新初始化 PCD。硬件全局中断由 `HAL_PCD_Start` 在协议栈准备完成后开启。
 
 CubeMX 保持 USB_OTG_FS Device_Only、VBUS sensing disabled、OTG_FS NVIC抢占优先级5，FreeRTOS TOTAL_HEAP_SIZE=32768。生成的 STM32_Drivers 编译三份 HAL USB 源码，根 CMake 只添加 Device/CDC 中间件，避免重复符号。
+
+## 2026-09-27：NUC 端需要同步的两项扩展
+
+旧RTT代码 `src/task/transmission/transmission_task.c` 的姿态包 `DATA[17..24]` 全为0，没有角速度；旧MCU只接收心跳，没有主动发心跳。这次保留25字节姿态DATA和旧角度/队色位置，新增末尾两个int32角速度。NUC不能把它们按float解释。
+
+MCU→NUC 心跳为 `FF 01 F0 01 seq SC AC`，总长7字节，约每100ms一次，seq成功提交后递增并自然回绕。只要USB就绪就可发，不要求云台已归中；归中参考可用时另以约10ms间隔发送31字节姿态。两者共用USB通道，心跳到期时先发心跳，姿态留到下一次服务；因此100Hz是目标频率，忙和心跳会带来延迟。没有排队重放旧姿态，下一次尝试取最新输入。
+
+**NUC读流必须按帧头、ID、LEN和SC/AC组帧，不能每次固定读31字节就当一帧。** 旧RTT接收端曾固定读31字节；如果NUC也这样实现，需要一起修改。暂时无法改NUC解析时可将 `Modules/transmission/transmission_tx.h` 的 `TRANSMISSION_TX_HEARTBEAT_ENABLE` 设为0并重新编译，恢复只发31字节姿态。默认1，以满足双向心跳联调；接收NUC心跳不受此发送开关影响。
+
+NUC→MCU继续兼容LEN=1或25的心跳；`heartbeat_online/heartbeat_age_ms` 独立记录心跳500ms新鲜度。有效目标仍可独立证明链路在线，自瞄要求新鲜目标而不额外强制每台旧NUC都发送心跳。心跳绝不会续命超过100ms的目标。USB/队列换代会作废旧心跳及旧目标。
+
+发送侧由 `transmission` 拥有真实计数与最后接受样本，任务调用服务接口即可，不直接排USB发送队列。`tx_ready` 表示USB可用，`tx_reference_valid` 表示姿态参考可用；`tx_attitude_age_ms` 在断线/参考无效/尚未发过姿态时为UINT32_MAX。最后一次的角度数值仍保留供诊断，不能单看数值就认为仍在发。
+
+验收顺序：LinkScope第14组检查USB与NUC→MCU心跳；第15组检查MCU→NUC角度、角速度和心跳；第13组检查SW2下位的AUTO请求及阻断位。NUC分别停止目标和停止心跳，确认两种超时互不替代；重新连接并确认旧目标不会恢复。协议主机测试验证字节/超时/忙重试，不能代替真USB和NUC程序联调。
+
+新增固定测试向量（yaw=-1.5°、pitch=2.25°、yaw角速度=-123.5°/s、pitch角速度=45.25°/s、红方）：
+
+```text
+FF 01 20 19 00 24 FA FF FF CA 08 00 00 00 00 00
+00 E8 03 00 00 94 1D FE FF C2 B0 00 00 32 48
+```
+
+MCU发给NUC的seq=42心跳为 `FF 01 F0 01 2A 1B 0C`。

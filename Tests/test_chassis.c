@@ -22,8 +22,43 @@ static void arm(ChassisController *s) {
     chassis_control_update(s, (ChassisVelocity){0}, feedback, true, true, 0.002f, 30, &o);
     assert(s->armed);
 }
+static void test_feasible_velocity(void)
+{
+    ChassisController s; ChassisOutput out;
+    float stationary[4]={0};
+    arm(&s);
+    /* 原地旋转未撞轮速上限：斜坡要求、最终轮速要求应一致。 */
+    for(unsigned n=0;n<200;n++)
+        chassis_control_update(&s,(ChassisVelocity){0,0,1.5f},stationary,
+                               true,false,0.002f,60,&out);
+    near(out.velocity.wz,1.5f,0.0001f);
+    near(out.feasible_velocity.wz,out.velocity.wz,0.0001f);
+    near(out.feasible_velocity.vx,0,0.001f);
+    near(out.feasible_velocity.vy,0,0.001f);
+    assert(out.measured_velocity_valid && out.measured_velocity.wz==0);
+    /* 平移占用轮速空间后，旋转要求也一起缩小；不能把要求当实测。 */
+    for(unsigned n=0;n<1000;n++)
+        chassis_control_update(&s,(ChassisVelocity){6000,0,1.5f},stationary,
+                               true,false,0.002f,60,&out);
+    near(out.velocity.vx,6000,0.01f);
+    near(out.velocity.wz,1.5f,0.0001f);
+    float peak=0;
+    for(unsigned i=0;i<4;i++) peak=fmaxf(peak,fabsf(out.target_rpm[i]));
+    near(peak,CHASSIS_MAX_MOTOR_RPM,0.001f);
+    assert(out.feasible_velocity.vx>0 && out.feasible_velocity.vx<out.velocity.vx);
+    assert(out.feasible_velocity.wz>0 && out.feasible_velocity.wz<out.velocity.wz);
+    near(out.feasible_velocity.vx/out.velocity.vx,
+         out.feasible_velocity.wz/out.velocity.wz,0.0001f);
+    near(out.feasible_velocity.vy,0,0.001f);
+    assert(out.measured_velocity.vx==0 && out.measured_velocity.wz==0);
+    chassis_control_update(&s,(ChassisVelocity){6000,0,1.5f},stationary,
+                           false,false,0.002f,60,&out);
+    assert(out.feasible_velocity.vx==0 && out.feasible_velocity.vy==0 &&
+           out.feasible_velocity.wz==0);
+}
 int main(void)
 {
+    test_feasible_velocity();
     ChassisVelocity target = cmd_build_chassis_command(660, 0, 660);
     near(target.vx, CHASSIS_MAX_SPEED_MM_S, 0.001f); near(target.wz, CHASSIS_MAX_YAW_RAD_S, 0.001f);
     target = cmd_build_chassis_command(330, 0, 0);
@@ -110,6 +145,6 @@ int main(void)
     dji_motor_encode_currents(currents,limits,wire);
     const uint8_t expected[8] = {0x07,0xd0,0xf8,0x30,0x07,0xd0,0xf8,0x30};
     assert(memcmp(wire,expected,8) == 0);
-    puts("PASS: omni wheel mapping, RC range, time-based ramps, PID limits, stop/rearm, power scaling, CAN packing");
+    puts("PASS: omni wheel mapping, RC range, time-based ramps, PID limits, stop/rearm, power scaling, feasible/actual velocity distinction, CAN packing");
     return 0;
 }
