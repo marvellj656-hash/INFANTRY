@@ -40,6 +40,15 @@ static void f_Integral_Limit(pid_obj_t *pid)
 {
     float temp_Output, temp_Iout; /* 各实例不共享临时状态。 */
     temp_Iout = pid->Iout + pid->ITerm;
+    if (pid->Improve & PID_RttControl) {
+        /* 与RTT同式：先看旧积分是否已把输出推向饱和。 */
+        temp_Output = pid->Pout + pid->Iout + pid->Dout;
+        if (fabsf(temp_Output) > pid->MaxOut && pid->Err * pid->Iout > 0)
+            pid->ITerm = 0;
+        if (temp_Iout > pid->IntegralLimit) { pid->ITerm=0; pid->Iout=pid->IntegralLimit; }
+        if (temp_Iout < -pid->IntegralLimit) { pid->ITerm=0; pid->Iout=-pid->IntegralLimit; }
+        return;
+    }
     temp_Output = pid->Pout + temp_Iout + pid->Dout;
     if (usr_abs(temp_Output) > pid->MaxOut)
     {
@@ -160,7 +169,7 @@ float pid_calculate(pid_obj_t *pid, float measure, float ref, float dt)
     pid->Ref = ref;
     pid->Err = pid->Ref - pid->Measure;
 
-    if (!pid->initialized) {
+    if (!pid->initialized && !(pid->Improve & PID_RttControl)) {
         pid->Last_Measure = measure;
         pid->Last_Err = pid->Err;
         pid->Pout = pid->Kp * pid->Err;
@@ -204,12 +213,15 @@ float pid_calculate(pid_obj_t *pid, float measure, float ref, float dt)
         // 输出限幅
         f_Output_Limit(pid);
     }
-    else // 进入死区, 则清空积分和输出
+    else // 默认清零；RTT兼容模式按旧源码保留历史
     {
         pid->Output = 0;
         pid->ITerm = 0;
-        pid->Iout = 0; /* 与原注释一致：进入死区确实清积分。 */
-        pid->Pout = 0; pid->Dout = 0;
+        /* RTT: 本次输出为0，但Iout/Pout/Dout历史不在死区清除。 */
+        if (!(pid->Improve & PID_RttControl)) {
+            pid->Iout = 0;
+            pid->Pout = 0; pid->Dout = 0;
+        }
     }
 
     if (pid->Improve & PID_ErrorHandle) f_PID_ErrorHandle(pid);

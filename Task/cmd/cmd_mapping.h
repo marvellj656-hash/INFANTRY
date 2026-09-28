@@ -23,6 +23,7 @@ typedef enum {
   AUTO_BLOCK_TARGET_STALE = 32u
 } AutoBlock;
 typedef struct {
+  float mouse_x_filtered, mouse_y_filtered, auto_pitch_trim_deg;
   uint16_t previous_keys;
   uint8_t previous_left_switch;
   bool friction_inhibit, continuous_key, auto_active;

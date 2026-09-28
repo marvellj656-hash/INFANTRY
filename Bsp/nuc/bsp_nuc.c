@@ -99,7 +99,10 @@ static int8_t cdc_receive(uint8_t *buffer, uint32_t *length)
 static int8_t cdc_transmit_complete(uint8_t *buffer, uint32_t *length, uint8_t ep)
 {
     (void)buffer;
-    (void)length;
+    if (length) {
+        debug_nuc_usb.tx_completed++;
+        debug_nuc_usb.tx_completed_bytes += *length;
+    }
     (void)ep;
     return USBD_OK;
 }

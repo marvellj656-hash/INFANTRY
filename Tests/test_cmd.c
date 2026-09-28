@@ -138,14 +138,15 @@ static void test_neutral_axes_and_spin_startup(void)
     cmd_map_update(&mapper, &in, &out);
     assert(!out.gimbal.neutral);
     in.remote.channels.mouse_y = 0;
+    mapper.mouse_x_filtered=mapper.mouse_y_filtered=0; /* 分开测试满杆倍率和滤波尾巴。 */
     in.remote.channels.ch[2] = 660;
     in.remote.channels.ch[3] = -660;
     cmd_map_update(&mapper, &in, &out);
     near(out.chassis.target.vx, 0);
     near(out.chassis.target.vy, 0);
     near(out.chassis.target.wz, 0); /* CH3 cannot turn the chassis and gimbal together. */
-    near(out.gimbal.yaw_rate_deg_s, 180);
-    near(out.gimbal.pitch_rate_deg_s, -180);
+    near(out.gimbal.yaw_rate_deg_s, 297);
+    near(out.gimbal.pitch_rate_deg_s, -297);
 
     in.remote.channels.ch[2] = in.remote.channels.ch[3] = 0;
     in.remote.channels.sw1 = RC_SWITCH_DOWN;
@@ -263,7 +264,7 @@ static void test_auto_reference_and_recovery(void)
     in.remote.channels.ch[2] = 660;
     cmd_map_update(&mapper, &in, &out);
     assert(!out.gimbal.auto_aim && !mapper.auto_active);
-    near(out.gimbal.yaw_rate_deg_s, 180);
+    near(out.gimbal.yaw_rate_deg_s, 297);
     in.vision.aim_valid = true;
     in.gimbal.target_deg[0] = 200;
     in.gimbal.target_deg[1] = 3;

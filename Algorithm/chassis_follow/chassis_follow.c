@@ -17,7 +17,7 @@ void chassis_follow_update(ChassisFollow *s, float relative_deg, float deadband_
     out->active = true;
     /* 相对角359度等同于-1度，不能绕一大圈追目标。 */
     out->error_deg = remainderf(relative_deg, 360.0f);
-    if (fabsf(out->error_deg) <= deadband_deg)
+    if (deadband_deg > 0 && fabsf(out->error_deg) <= deadband_deg)
     {
         pid_clear(&s->pid);
         return;

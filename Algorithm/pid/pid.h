@@ -45,6 +45,8 @@ typedef enum
     PID_OutputFilter = 0x10,                // 0001 0000 输出滤波
     PID_ChangingIntegrationRate = 0x20,     // 0010 0000 变速积分
     PID_DerivativeFilter = 0x40,            // 0100 0000 微分滤波器
+    /* RTT控制语义：保留死区积分、原积分限幅及首次微分行为；仅云台/跟随使用。 */
+    PID_RttControl = 0x100,
     PID_ErrorHandle = 0x80,                 // 1000 0000
 } pid_improvement_e;
 

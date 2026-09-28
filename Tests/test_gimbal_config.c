@@ -22,12 +22,12 @@ int main(void)
     GimbalController g;
     GimbalOutput out;
     GimbalCommand cmd = {.enabled=true, .neutral=true};
-    GimbalInput in = {.valid=true};
+    GimbalInput in = {.valid=true,.relative_deg={0,0}};
     gimbal_control_reset(&g);
     CHECK_AXIS(&g, YAW, 0, IMU);
     CHECK_AXIS(&g, PITCH, 1, IMU);
     /* 完成归中，然后经历手动->自瞄->手动，确认切换确实装入对应参数。 */
-    for (unsigned i=0; i<60; ++i)
+    for (unsigned i=0; i<300; ++i)
         gimbal_control_update(&g, &cmd, &in, true, 0.002f, &out);
     assert(out.mode == GIMBAL_GYRO);
     cmd.auto_aim=true;

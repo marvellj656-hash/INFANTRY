@@ -76,13 +76,16 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
       .follow_gimbal = enabled && !out->spin};
   if (out->spin)
     out->chassis.target.wz = CHASSIS_SPIN_RAD_S;
+  /* RTT鼠标滤波参数dt=0.014、RC=0.1，每1ms命令周期执行。 */
+  s->mouse_x_filtered += (0.014f/0.114f)*(c->mouse_x-s->mouse_x_filtered);
+  s->mouse_y_filtered += (0.014f/0.114f)*(c->mouse_y-s->mouse_y_filtered);
   out->gimbal = (GimbalCommand){
       .enabled = enabled,
       .neutral = neutral,
-      .yaw_rate_deg_s = channel_axis(c->ch[2]) * CMD_YAW_STICK_RATE_DEG_S +
-                        c->mouse_x * CMD_YAW_MOUSE_RATE_PER_COUNT,
-      .pitch_rate_deg_s = channel_axis(c->ch[3]) * CMD_PITCH_STICK_RATE_DEG_S +
-                          c->mouse_y * CMD_PITCH_MOUSE_RATE_PER_COUNT,
+      .yaw_rate_deg_s = clamp(c->ch[2], CMD_STICK_MAX)/CMD_STICK_MAX * CMD_YAW_STICK_RATE_DEG_S +
+                        s->mouse_x_filtered * CMD_YAW_MOUSE_RATE_PER_COUNT,
+      .pitch_rate_deg_s = clamp(c->ch[3], CMD_STICK_MAX)/CMD_STICK_MAX * CMD_PITCH_STICK_RATE_DEG_S +
+                          s->mouse_y_filtered * CMD_PITCH_MOUSE_RATE_PER_COUNT,
       .received_at_ms = r->received_at_ms};
   out->auto_requested = c->sw2 == RC_SWITCH_DOWN || c->mouse_right;
   if (!enabled)
@@ -104,15 +107,17 @@ void cmd_map_update(CmdMapper *s, const CmdInput *in, CmdOutput *out) {
     if (!s->auto_active ||
         s->reference_generation != in->gimbal.reference_generation ||
         s->vision_generation != in->vision.link_generation) {
+      s->auto_pitch_trim_deg = 0;
       s->auto_origin_yaw_deg = in->gimbal.target_deg[0];
       s->auto_origin_pitch_deg = in->gimbal.target_deg[1];
       s->reference_generation = in->gimbal.reference_generation;
       s->vision_generation = in->vision.link_generation;
     }
+    s->auto_pitch_trim_deg -= s->mouse_y_filtered * 0.010f * 0.2f;
     out->gimbal.auto_aim = true;
     out->gimbal.auto_yaw_deg = s->auto_origin_yaw_deg + in->vision.yaw_deg;
     out->gimbal.auto_pitch_deg =
-        s->auto_origin_pitch_deg + in->vision.pitch_deg;
+        s->auto_origin_pitch_deg + in->vision.pitch_deg + s->auto_pitch_trim_deg;
   }
   s->auto_active = auto_aim;
   bool friction = enabled && c->sw1 != RC_SWITCH_UP && !s->friction_inhibit;

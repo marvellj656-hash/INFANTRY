@@ -7,7 +7,7 @@ static float clamp(float x, float lo, float hi) {
 }
 static void configure(GimbalController *s, bool automatic) {
   const unsigned opt = PID_Trapezoid_Intergral | PID_Integral_Limit |
-                       PID_Derivative_On_Measurement;
+                       PID_Derivative_On_Measurement | PID_RttControl;
   /* 每个模式都完整读取自己的五个参数，避免“头文件改了但这里仍写死0”。 */
   const pid_config_t a[2] = {
       INIT_PID_CONFIG(
@@ -68,87 +68,80 @@ void gimbal_control_update(GimbalController *s, const GimbalCommand *c,
   for (unsigned i = 0; i < 2; i++)
     finite = finite && isfinite(in->relative_deg[i]) &&
              isfinite(in->angle_deg[i]) && isfinite(in->rate_rad_s[i]);
-  /* 总开关关掉才解除归中超时锁定；传感器掉线不能偷偷重试撞限位。 */
   if (!c->enabled) {
     gimbal_control_reset(s);
     return;
   }
-  if (s->fault_latched) {
-    out->mode = GIMBAL_FAULT;
-    return;
-  }
   if (!permit || !in->valid || !finite) {
-    gimbal_control_reset(s);
+    /* 真实失效输出0，但短暂失效不丢掉已归中的模式和目标。 */
+    for (unsigned i=0;i<2;i++) { pid_clear(&s->angle[i]); pid_clear(&s->speed[i]); }
+    out->mode = s->mode;
     return;
   }
   if (s->mode == GIMBAL_RELAX) {
-    if (!c->neutral)
-      return;
     s->mode = GIMBAL_INIT;
-    for (unsigned i = 0; i < 2; i++)
-      s->start_deg[i] = in->relative_deg[i];
     configure(s, false);
   }
+  bool finish_home = false;
   if (s->mode == GIMBAL_INIT) {
     s->homing_s += dt;
-    float fraction =
-        clamp(1.0f - s->homing_s / (BACK_CENTER_TIME * 0.001f), 0, 1);
-    for (unsigned i = 0; i < 2; i++)
-      s->target_deg[i] = s->start_deg[i] * fraction;
-    bool centered =
-        fabsf(in->relative_deg[0]) < 3.6f && fabsf(in->relative_deg[1]) < 0.9f;
-    if (centered && fraction == 0) {
-      s->mode = GIMBAL_GYRO;
-      /* 切到惯性角度前接住当前姿态，不能把编码器零度当作 INS 零度。 */
-      for (unsigned i = 0; i < 2; i++)
-        s->target_deg[i] = s->reference_deg[i] = in->angle_deg[i];
-      configure(s, false);
-    } else if (s->homing_s >= GIMBAL_HOME_TIMEOUT_S) {
-      s->fault_latched = true;
-      s->mode = GIMBAL_FAULT;
-      out->mode = s->mode;
-      return;
-    }
+    float fraction = clamp(1.0f-s->homing_s/(BACK_CENTER_TIME*0.001f),0,1);
+    /* RTT用本轮编码器角度乘剩余斜坡，不是用刚上电的角度作起点。 */
+    for (unsigned i=0;i<2;i++) s->target_deg[i]=in->relative_deg[i]*fraction;
+    finish_home = (fabsf(in->relative_deg[0]) <= 80.0f/22.75f &&
+                   fabsf(in->relative_deg[1]) <= 20.0f/22.75f) ||
+                  (s->homing_s > GIMBAL_HOME_RELAX_AFTER_S &&
+                   fabsf(in->relative_deg[0]) <= 200.0f/22.75f &&
+                   fabsf(in->relative_deg[1]) <= 200.0f/22.75f);
   } else {
     GimbalMode next = c->auto_aim ? GIMBAL_AUTO : GIMBAL_GYRO;
     if (next != s->mode) {
+      /* RTT换PID并清历史，目标承接上次命令，不重新抓取实际角度。 */
       configure(s, c->auto_aim);
-      for (unsigned i = 0; i < 2; i++)
-        s->target_deg[i] = in->angle_deg[i];
       s->mode = next;
     }
     if (c->auto_aim) {
       s->target_deg[0] = c->auto_yaw_deg;
       s->target_deg[1] = c->auto_pitch_deg;
     } else {
-      s->target_deg[0] += clamp(c->yaw_rate_deg_s, -GIMBAL_MAX_RATE_DEG_S,
-                                GIMBAL_MAX_RATE_DEG_S) *
-                          dt;
-      s->target_deg[1] += clamp(c->pitch_rate_deg_s, -GIMBAL_MAX_RATE_DEG_S,
-                                GIMBAL_MAX_RATE_DEG_S) *
-                          dt;
+      s->target_deg[0] += c->yaw_rate_deg_s*dt;
+      s->target_deg[1] += c->pitch_rate_deg_s*dt;
     }
-    s->target_deg[1] = clamp(s->target_deg[1], PIT_ANGLE_MIN, PIT_ANGLE_MAX);
+    /* RTT的Pitch限位施加在INS角度目标上，不额外切断电机输出。 */
+    float requested=s->target_deg[1];
+    s->target_deg[1]=clamp(requested,PIT_ANGLE_MIN,PIT_ANGLE_MAX);
+    out->pitch_target_limited=requested!=s->target_deg[1];
   }
   for (unsigned i = 0; i < 2; i++) {
     float measured =
         s->mode == GIMBAL_INIT ? in->relative_deg[i] : in->angle_deg[i];
     /* 角度环：度 -> rad/s；速度环：rad/s -> GM6020 电压码。沿用旧版参数单位。
      */
-    float rate = pid_calculate(&s->angle[i], measured, s->target_deg[i], dt);
+    float target = s->target_deg[i];
+    if (i == 0 && s->mode != GIMBAL_INIT) {
+      measured -= s->reference_deg[0];
+      target -= s->reference_deg[0];
+    }
+    float rate = pid_calculate(&s->angle[i], measured, target, dt);
+    out->rate_target_rad_s[i] = rate;
     float raw = pid_calculate(&s->speed[i], in->rate_rad_s[i], rate, dt);
     if (i == 0)
       raw = -raw; /* 旧接线：Yaw 电机正方向与云台角度正方向相反。 */
-    /* 硬限位按编码器相对角判断，避免姿态零点变化突破机械范围。 */
-    if (i == 1 && ((in->relative_deg[1] >= PIT_ANGLE_MAX && raw > 0) ||
-                   (in->relative_deg[1] <= PIT_ANGLE_MIN && raw < 0))) {
-      raw = 0;
-      pid_clear(&s->speed[i]);
-      pid_clear(&s->angle[i]);
-    }
     out->raw[i] = (int16_t)raw;
     out->target_deg[i] = s->target_deg[i];
     out->relative_deg[i] = in->relative_deg[i];
+  }
+  if (finish_home) {
+    /* 本拍仍输出编码器归中控制，下一拍进入INS。Yaw用绝对INS加零点实现等价平移。
+     * Pitch沿用RTT：归中后目标为INS 0度，不抓住当前INS姿态。 */
+    s->reference_deg[0]=in->angle_deg[0];
+    s->reference_deg[1]=in->angle_deg[1];
+    s->target_deg[0]=in->angle_deg[0];
+    s->target_deg[1]=0;
+    s->mode=GIMBAL_GYRO;
+    configure(s,false);
+    out->target_deg[0]=s->target_deg[0];
+    out->target_deg[1]=s->target_deg[1];
   }
   out->reference_yaw_deg = s->reference_deg[0];
   out->reference_pitch_deg = s->reference_deg[1];

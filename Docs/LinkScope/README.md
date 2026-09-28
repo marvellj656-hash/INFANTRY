@@ -1,3 +1,5 @@
+> 2026-09-28更新：已恢复RTT云台与跟随基准，见 ../rtt_control_restore.md。旧的2度上抬、60度/秒、旋转斜坡调参说明已失效。第16/17/18组仍各只勾选三条曲线。
+
 # LinkScope：点一下，选好一组变量
 
 **2026-09-27 最新入口：仍然双击本目录 `Open-LinkScope.cmd`，在黑色窗口 `Number [1]:` 后输入编号并回车。新增 9～15 组；第9组按三曲线调参只勾选相对角差、跟随要求角速度、底盘实际角速度，其他分组保持原预选。必须使用匹配固件的 ELF。**
@@ -198,7 +200,7 @@
 |---|---|---|
 | `debug_follow.error_deg` | 相对角经过方向、折回±180°后的误差，单位度（此显示值尚未扣除死区） | 误差大但跟随要求小，再看 Kp |
 | `debug_follow.wz_rad_s` | 跟随 PID 要求的角速度 | 达到±1.5平台，就是跟随限速 |
-| `debug_chassis.velocity.wz` | 经过加速度斜坡的要求 | 跟随要求变化快而此处慢，看 `CHASSIS_YAW_ACCEL_RAD_S2` |
+| `debug_chassis.velocity.wz` | 经过总限速的要求 | RTT恢复版不再加旋转斜坡 |
 | `debug_chassis.feasible_velocity.wz` | 最终四轮目标 RPM 反算的要求 | 它更低时，轮速限幅限制了平移与旋转组合 |
 | `debug_chassis.measured_velocity.wz` | 四个有效轮速反馈反算的车体角速度 | 明显跟不上前两条，再查轮速环/输出/反馈 |
 | `debug_chassis.power_scale` | 电机输出受功率预算缩小的比例 | 小于1时，增加跟随 Kp 不会直接恢复输出 |
@@ -227,4 +229,7 @@ NUC端需要按LEN解析新增的7字节心跳，并读取0x20数据末尾新增
 
 跟随目标是角差0°，默认±2°死区内不再追。机械零点由 `Task/gimbal/gimbal_config.h` 的 `CENTER_ECD_YAW` 定义，当前普通安装为5800，这是编码器计数而不是角度。只有云台和车头对齐时该角差也接近0，才能直接据此跟随。`debug_ins.yaw_deg` 是云台世界角，不是本跟随环直接输入。
 
-真正生效的是 `Task/chassis/chassis_config.h`：CHASSIS_FOLLOW_KP/KI/KD、CHASSIS_FOLLOW_MAX_RAD_S、CHASSIS_YAW_ACCEL_RAD_S2，以及跟随死区/方向/积分限幅。gimbal_config.h中旧CHASSIS_KP_V_FOLLOW等已删除。先保持Ki=Kd=0，方向与停车正确后再小幅增加Kp；要求速度顶住当前限速时才逐步改跟随限速，一次只改一项并重新编译烧录。旧版0.04/1.5rad/s只是示例；当前值以配置和第10组为准，单改Kp无法越过限速。
+真正生效的是 `Task/chassis/chassis_config.h`：CHASSIS_FOLLOW_KP/KI/KD、CHASSIS_FOLLOW_MAX_RAD_S，以及跟随死区/方向/积分限幅。gimbal_config.h中旧CHASSIS_KP_V_FOLLOW等已删除。先保持Ki=Kd=0，方向与停车正确后再小幅增加Kp；要求速度顶住当前限速时才逐步改跟随限速，一次只改一项并重新编译烧录。旧版0.04/1.5rad/s只是示例；当前值以配置和第10组为准，单改Kp无法越过限速。
+
+
+新增16 pitch_angle、17 pitch_speed、18 nuc_transport，均只预选三条曲线。详见 ../pitch_tuning.md 和 ../nuc_troubleshooting.md。新变量须配合匹配的新固件。

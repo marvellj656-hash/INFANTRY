@@ -8,7 +8,7 @@
  * 角度环：度 -> rad/s；速度环：rad/s -> GM6020原始输出码。
  * *_INTEGRAL_* 限制积分输出，*_MAX_* 限制总输出，单位均与该环输出一致。
  * 每组Kp/Ki/Kd/积分限幅/总限幅都由gimbal_control.c读取；Ki非零还需积分限幅非零。
- * 修改后编译烧录生效；本次清理不替实车调整任何增益或限位。
+ * 修改后编译烧录生效；增益仍需用实车曲线验证。
  */
 
 /*云台编码器归中*/
@@ -33,6 +33,7 @@
 #define GIMBAL_PERIOD 1
 /* 云台回中初始化时间 (ms) */
 #define BACK_CENTER_TIME 100
+/* 归中沿用机械中心，不叠加试验上抬偏移。 */
 
 /* -------------------------------- 云台电机PID参数 ------------------------------- */
 /* 云台yaw轴电机PID参数 */
@@ -55,12 +56,15 @@
 #define YAW_INTEGRAL_V_AUTO 0
 #define YAW_MAX_V_AUTO 30000
 /* auto角度环 */
-
 #define YAW_KP_A_AUTO 0.25f
 #define YAW_KI_A_AUTO 0
 #define YAW_KD_A_AUTO 0.008f
 #define YAW_INTEGRAL_A_AUTO 0
 #define YAW_MAX_A_AUTO 25
+
+
+
+
 /* 云台PITCH轴电机PID参数 */
 /* imu速度环 */
 #define PITCH_KP_V_IMU 4500
@@ -89,8 +93,7 @@
 #define PITCH_INTEGRAL_A_AUTO 0.0f
 #define PITCH_MAX_A_AUTO 20
 
-/* 归中必须在限定时间完成，否则等待重新关闭总开关。 */
-#define GIMBAL_HOME_TIMEOUT_S 2.0f
-#define GIMBAL_MAX_RATE_DEG_S 180.0f
+/* RTT: 1秒后两轴均在200编码器格内允许完成，否则继续归中。 */
+#define GIMBAL_HOME_RELAX_AFTER_S 1.0f
 
 #endif /* OMNI_JPL_GIMBAL_CONFIG_H */

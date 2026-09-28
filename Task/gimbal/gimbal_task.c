@@ -38,10 +38,14 @@ void gimbal_task_entry(void *argument) {
   (void)argument;
   TickType_t wake = xTaskGetTickCount(), previous = wake;
   GimbalCommand command = {0};
-  uint32_t generation = 0;
+  uint32_t generation = 0, last_faults = 0, fault_cycles = 0;
+  uint32_t previous_cycles = bsp_time_cycles();
   for (;;) {
     TickType_t now = xTaskGetTickCount(), elapsed = now - previous;
     previous = now;
+    uint32_t cycles = bsp_time_cycles();
+    float control_dt = bsp_time_cycles_to_seconds(cycles - previous_cycles);
+    previous_cycles = cycles;
     (void)xQueueReceive(commands, &command, 0);
     DjiMotorFeedback f[2] = {0};
     InsState ins = {0};
@@ -58,7 +62,7 @@ void gimbal_task_entry(void *argument) {
       faults |= GIMBAL_BLOCK_CAN;
     if (!imu_ok)
       faults |= GIMBAL_BLOCK_IMU;
-    if (!elapsed || elapsed > pdMS_TO_TICKS(20))
+    if (control_dt <= 0 || control_dt > 0.020f)
       faults |= GIMBAL_BLOCK_TIMING;
     for (unsigned i = 0; i < 2; i++)
       permit = permit && f[i].online && f[i].transport_ready;
@@ -66,9 +70,7 @@ void gimbal_task_entry(void *argument) {
                            ROBOT_REMOTE_TIMEOUT_MS;
     if (generation != ins.generation) {
       generation = ins.generation;
-      bool fault_latched = controller.fault_latched;
       gimbal_control_reset(&controller);
-      controller.fault_latched = fault_latched;
     }
     GimbalInput input = {
         .relative_deg = {gimbal_encoder_relative(f[0].measure.ecd,
@@ -80,16 +82,19 @@ void gimbal_task_entry(void *argument) {
         .valid = permit};
     GimbalOutput result;
     gimbal_control_update(&controller, &command, &input, permit,
-                          (float)elapsed / configTICK_RATE_HZ, &result);
+                          control_dt, &result);
     if (!dji_motor_set_outputs(motors, result.raw, 2)) {
-      gimbal_control_reset(&controller);
-      result = (GimbalOutput){0};
+      faults |= GIMBAL_BLOCK_OUTPUT;
+      for (unsigned i=0;i<2;i++) {
+        pid_clear(&controller.angle[i]); pid_clear(&controller.speed[i]);
+      }
+      result = (GimbalOutput){.mode=controller.mode};
     }
     result.reference_generation = ins.generation;
-    if (result.mode == GIMBAL_RELAX && command.enabled && !command.neutral)
-      faults |= GIMBAL_WAIT_NEUTRAL;
-    if (result.mode == GIMBAL_FAULT)
-      faults |= GIMBAL_HOME_FAILED;
+    uint32_t runtime_faults = faults & ~(GIMBAL_BLOCK_COMMAND | GIMBAL_WAIT_NEUTRAL);
+    if (runtime_faults) { last_faults = runtime_faults; ++fault_cycles; }
+    float pitch_measured = result.mode == GIMBAL_INIT ?
+        input.relative_deg[1] : input.angle_deg[1];
     debug_gimbal =
         (GimbalDebug){.faults = faults,
                       .mode = result.mode,
@@ -104,7 +109,18 @@ void gimbal_task_entry(void *argument) {
                       .yaw_relative_deg = input.relative_deg[0],
                       .pitch_relative_deg = input.relative_deg[1],
                       .yaw_target_deg = result.target_deg[0],
-                      .pitch_target_deg = result.target_deg[1]};
+                      .pitch_target_deg = result.target_deg[1],
+                      .pitch_measured_deg = pitch_measured,
+                      .pitch_error_deg = result.target_deg[1] - pitch_measured,
+                      .pitch_rate_target_rad_s = result.rate_target_rad_s[1],
+                      .pitch_rate_measured_rad_s = input.rate_rad_s[1],
+                      .pitch_speed_p = controller.speed[1].Pout,
+                      .pitch_speed_i = controller.speed[1].Iout,
+                      .pitch_speed_d = controller.speed[1].Dout,
+                      .pitch_ecd = f[1].measure.ecd,
+                      .pitch_target_limited = result.pitch_target_limited,
+                      .pitch_output_limited = result.pitch_output_limited,
+                      .last_faults = last_faults, .fault_cycles = fault_cycles};
     taskENTER_CRITICAL();
     state = result;
     published_at = bsp_time_ms();

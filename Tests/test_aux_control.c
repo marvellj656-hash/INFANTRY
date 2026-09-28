@@ -1,4 +1,5 @@
 #include "gimbal/gimbal_control.h"
+#include "gimbal/gimbal_config.h"
 #include "shoot/shoot_control.h"
 #include "shoot/shoot_config.h"
 #include <assert.h>
@@ -6,33 +7,8 @@
 #include <stdio.h>
 int main(void)
 {
-    GimbalController g;GimbalOutput go;
-    gimbal_control_reset(&g);
-    GimbalCommand gc={.enabled=true,.neutral=true};
-    GimbalInput gi={.valid=true};
+    /* 云台详细轨迹与旧源码逐点对比见test_rtt_control.c。 */
     assert(fabsf(gimbal_encoder_relative(2,8190,1)-4*360.0f/8192)<0.001f);
-    for(unsigned i=0;i<60;i++)gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);
-    assert(go.centered&&go.mode==GIMBAL_GYRO);
-    gc.yaw_rate_deg_s=100;
-    gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);
-    assert(go.target_deg[0]>0&&go.raw[0]<0);
-    gimbal_control_update(&g,&gc,&gi,false,0.002f,&go);
-    assert(go.raw[0]==0&&go.raw[1]==0&&!go.centered);
-    gc.neutral=false;gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);assert(go.mode==GIMBAL_RELAX);
-    gc.neutral=true;gi.relative_deg[0]=30;
-    for(unsigned i=0;i<1100;i++)gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);
-    assert(go.mode==GIMBAL_FAULT&&go.raw[0]==0);
-    gc.enabled=false;gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);
-    assert(!g.fault_latched);
-    gi.relative_deg[0]=0;gc.enabled=true;gc.yaw_rate_deg_s=0;
-    for(unsigned i=0;i<60;i++)gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);
-    gc.auto_aim=true;gc.auto_pitch_deg=100;
-    gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);
-    assert(go.mode==GIMBAL_AUTO&&go.target_deg[1]<=30);
-    gi.relative_deg[1]=31;
-    gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);assert(go.raw[1]<=0);
-    gi.angle_deg[0]=NAN;
-    gimbal_control_update(&g,&gc,&gi,true,0.002f,&go);assert(go.raw[0]==0);
     ShootController s;ShootOutput so;shoot_control_reset(&s);
     ShootInput si={.valid=true};ShootCommand sc={.enabled=true,.friction=true,.fire=true,.mode=SHOOT_SINGLE};
     shoot_control_update(&s,&sc,&si,true,0.002f,&so);assert(!so.armed);

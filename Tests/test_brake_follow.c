@@ -113,6 +113,8 @@ static void test_follow_integral(void)
 {
     ChassisFollow s; ChassisFollowOutput out;
     pid_config_t cfg=CHASSIS_FOLLOW_PID_CONFIG;
+    /* 本算例验证通用PID；RTT模式另用旧源码oracle验证。 */
+    cfg.Improve=PID_Derivative_On_Measurement|PID_Integral_Limit;
     cfg.Kp=0.04f; cfg.Ki=1.0f; cfg.Kd=0;
     cfg.IntegralLimit=0; cfg.MaxOut=1.5f;
     chassis_follow_init(&s,&cfg);
