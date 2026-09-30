@@ -20,7 +20,7 @@ static TransmissionTeam team_from_referee(void)
     return TRANSMISSION_TEAM_UNKNOWN;
 }
 
-/* 任务只负责接线：发送调度不知道USB句柄，只问“能否交出这一帧”。 */
+
 static bool send_to_nuc(const uint8_t *data, size_t length, void *context)
 {
     (void)context;

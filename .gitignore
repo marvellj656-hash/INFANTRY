@@ -2,7 +2,7 @@
 /build/
 /build-*/
 /cmake-build-*/
-
+/Docs/
 #fuck
 /.idea/
 /.migration-backup/

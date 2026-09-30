@@ -1,10 +1,10 @@
 #include "referee_ui_task.h"
-#include "referee_ui/referee_ui.h"
-#include "referee/referee.h"
-#include "referee/referee_task.h"
-#include "cmd/cmd_mapping.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "cmd/cmd_mapping.h"
+#include "referee/referee.h"
+#include "referee/referee_task.h"
+#include "referee_ui/referee_ui.h"
 
 static uint32_t redraw_requests;
 volatile RefereeUiDebug debug_referee_ui;
