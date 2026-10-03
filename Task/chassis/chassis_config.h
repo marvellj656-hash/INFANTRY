@@ -4,6 +4,7 @@
 #define CHASSIS_MAX_SPEED_MM_S 6000.0f /* 沿用原普通速度上限，mm/s。 */
 #define CHASSIS_MAX_YAW_RAD_S 7.0f
 #define CHASSIS_ACCEL_MM_S2 4000.0f
+#define CHASSIS_YAW_ACCEL_RAD_S2 6.0f
 /* SW1下位小陀螺的目标角速度；仍受总限速、斜坡、轮速和功率限制。 */
 #define CHASSIS_SPIN_RAD_S 4.5f
 /* 跟随角度环：SW2中位/下位且未开小陀螺时，让云台相对车头的角差趋近0。
@@ -11,18 +12,18 @@
  * 先用小角度确认底盘转动让角差缩小，再提高速度。
  * 与旧 RTT 符号一致：新的 relative_deg 已取过编码器负号，所以这里为+1。 */
 #define CHASSIS_FOLLOW_DIRECTION 1.0f
-#define CHASSIS_FOLLOW_KP 0.27f
+#define CHASSIS_FOLLOW_KP 0.04f /* (rad/s)/deg */
 #define CHASSIS_FOLLOW_KI 0.0f
 /* 积分项也是角速度：只增大 Ki、但此处仍为 0，积分就仍然被夹在 0。 */
 #define CHASSIS_FOLLOW_I_LIMIT_RAD_S 0.0f
-#define CHASSIS_FOLLOW_KD 0.001f
-#define CHASSIS_FOLLOW_DEADBAND_DEG 0.0f
-#define CHASSIS_FOLLOW_MAX_RAD_S 20.0f
+#define CHASSIS_FOLLOW_KD 0.0f
+#define CHASSIS_FOLLOW_DEADBAND_DEG 2.0f
+#define CHASSIS_FOLLOW_MAX_RAD_S 1.5f
 /* 任务和主机测试共用这一份配置，避免任务里藏着另一个积分限幅。 */
 #define CHASSIS_FOLLOW_PID_CONFIG \
     INIT_PID_CONFIG(CHASSIS_FOLLOW_KP, CHASSIS_FOLLOW_KI, CHASSIS_FOLLOW_KD, \
                     CHASSIS_FOLLOW_I_LIMIT_RAD_S, CHASSIS_FOLLOW_MAX_RAD_S, \
-                    PID_Derivative_On_Measurement | PID_Integral_Limit | PID_Trapezoid_Intergral | PID_RttControl)
+                    PID_Derivative_On_Measurement | PID_Integral_Limit)
 /* 几何及轮序沿用旧工程 omni_calc：电机 0..3 对应 0x201..0x204。 */
 #define CHASSIS_WHEEL_PERIMETER_MM 471.0f
 #define CHASSIS_GEAR_RATIO 19.0f

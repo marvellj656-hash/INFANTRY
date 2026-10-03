@@ -17,8 +17,6 @@ typedef struct
 {
     uint32_t rx_packets, rx_bytes, dropped_packets, tx_packets, tx_busy;
     uint32_t resets, generation, init_failures;
-    /* tx_packets只表示交给USB；以下计数表示USB完成回调，不代表NUC应用已解析。 */
-    uint32_t tx_completed, tx_completed_bytes;
     uint8_t initialized, configured;
 } BspNucDebug;
 extern volatile BspNucDebug debug_nuc_usb;

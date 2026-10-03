@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'shoot_stop_baseline', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion', 'pitch_angle', 'pitch_speed', 'nuc_transport')]
+    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'shoot_stop_baseline', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion')]
     [string]$Preset = '',
     [string]$AppDirectory = 'E:/FOQQ/Linkscope/LinkScope-x86-V1.3.0',
     [string]$ElfPath = '',
@@ -10,7 +10,7 @@ param(
 # Settings are copied only after all paths and variable sections have been checked.
 $ErrorActionPreference = 'Stop'
 try {
-    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion', 'pitch_angle', 'pitch_speed', 'nuc_transport')
+    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion')
     if ([string]::IsNullOrWhiteSpace($Preset)) {
         Write-Host 'Choose the signals to preselect in LinkScope:'
         Write-Host '  1. overview - start here: command / IMU / gimbal / shoot'
@@ -28,9 +28,6 @@ try {
         Write-Host ' 13. auto_aim - SW2 request / block reason / NUC target / gimbal target'
         Write-Host ' 14. nuc_link - USB / RX heartbeat / target freshness'
         Write-Host ' 15. nuc_motion - TX angles / angular rates / heartbeat / reference'
-        Write-Host ' 16. pitch_angle - target angle / measured angle / angle error (3 curves)'
-        Write-Host ' 17. pitch_speed - target rate / measured rate / motor output (3 curves)'
-        Write-Host ' 18. nuc_transport - USB accepted / completed / attitude frames (3 curves)'
         $answer = Read-Host 'Number [1]'
         if ([string]::IsNullOrWhiteSpace($answer)) { $answer = '1' }
         $choice = 0

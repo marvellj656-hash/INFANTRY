@@ -23,16 +23,15 @@ typedef struct {
 typedef struct {
   pid_obj_t angle[2], speed[2];
   GimbalMode mode;
-  float target_deg[2], homing_s;
+  float target_deg[2], start_deg[2], homing_s;
   float reference_deg[2];
+  bool fault_latched;
 } GimbalController;
 typedef struct {
   int16_t raw[2];
   GimbalMode mode;
   bool centered;
   float target_deg[2], relative_deg[2];
-  float rate_target_rad_s[2]; /* 角度环给速度环的目标。 */
-  bool pitch_target_limited, pitch_output_limited;
   float reference_yaw_deg, reference_pitch_deg;
   uint32_t reference_generation;
   bool reference_valid;

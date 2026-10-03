@@ -48,23 +48,19 @@ void chassis_task_entry(void *argument)
     const pid_config_t follow_pid = CHASSIS_FOLLOW_PID_CONFIG;
     debug_follow_config = (ChassisFollowConfigDebug){
         .deadband_deg = CHASSIS_FOLLOW_DEADBAND_DEG,
-        .yaw_accel_rad_s2 = 0 /* 0表示RTT直接旋转目标，无附加斜坡 */};
+        .yaw_accel_rad_s2 = CHASSIS_YAW_ACCEL_RAD_S2};
     chassis_follow_init(&follow_controller, &follow_pid);
     uint32_t reference_generation = 0;
     bool previous_tx_ok = true;
-    uint32_t previous_cycles = bsp_time_cycles();
     for (;;)
     {
         TickType_t now = xTaskGetTickCount();
         TickType_t elapsed = now - previous;
         previous = now;
-        uint32_t cycles = bsp_time_cycles();
-        float control_dt = bsp_time_cycles_to_seconds(cycles - previous_cycles);
-        previous_cycles = cycles;
         (void)xQueueReceive(command_queue, &command, 0);
         uint32_t now_ms = bsp_time_ms();
         bool fresh = (uint32_t)(now_ms - command.received_at_ms) < ROBOT_REMOTE_TIMEOUT_MS;
-        bool timing_ok = control_dt > 0 && control_dt <= ROBOT_CONTROL_MAX_INTERVAL_MS * 0.001f;
+        bool timing_ok = elapsed > 0 && elapsed <= pdMS_TO_TICKS(ROBOT_CONTROL_MAX_INTERVAL_MS);
         if (elapsed > pdMS_TO_TICKS(ROBOT_CONTROL_MAX_INTERVAL_MS))
         {
             wake = now; /* 超期时重建周期基准，不连续补跑历史控制周期。 */
@@ -102,7 +98,7 @@ void chassis_task_entry(void *argument)
         chassis_follow_update(&follow_controller,
             CHASSIS_FOLLOW_DIRECTION * gimbal.relative_deg[0], CHASSIS_FOLLOW_DEADBAND_DEG,
             command.follow_gimbal && reference_ok && faults == 0,
-            control_dt, &follow);
+            (float)elapsed / configTICK_RATE_HZ, &follow);
         if (command.follow_gimbal)
         {
             target.wz = follow.wz_rad_s;
@@ -112,7 +108,7 @@ void chassis_task_entry(void *argument)
         debug_follow = follow;
         ChassisOutput result;
         chassis_control_update(&chassis_controller, target, measured, faults == 0, command.neutral,
-                               control_dt, CHASSIS_BRINGUP_POWER_W,
+                               (float)elapsed / configTICK_RATE_HZ, CHASSIS_BRINGUP_POWER_W,
                                &result);
         result.measured_velocity_valid = result.measured_velocity_valid && motors_ready;
         if (!result.measured_velocity_valid)

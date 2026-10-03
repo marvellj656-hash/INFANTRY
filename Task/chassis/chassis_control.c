@@ -69,7 +69,7 @@ void chassis_control_update(ChassisController *s, ChassisVelocity target, const 
     target.wz = clamp(target.wz, CHASSIS_MAX_YAW_RAD_S);
     out->target = target;
     ramp_update_xy(&s->velocity.vx, &s->velocity.vy, target.vx, target.vy, CHASSIS_ACCEL_MM_S2, dt);
-    s->velocity.wz = target.wz; /* RTT旋转目标直接进运动学，无额外旋转斜坡。 */
+    s->velocity.wz = ramp_update(s->velocity.wz, target.wz, CHASSIS_YAW_ACCEL_RAD_S2, dt);
     out->velocity = s->velocity;
     out->armed = 1;
     omni_inverse_kinematics(s->velocity, &geometry, out->target_rpm);

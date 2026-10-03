@@ -103,9 +103,6 @@ int main(void)
     CHECK(!bsp_nuc_usb_alloc(sizeof(USBD_CDC_HandleTypeDef))); /* 只分配一个CDC对象 */
     uint8_t data[] = {0xff, 1, 2, 3};
     CHECK(bsp_nuc_send(data, sizeof(data)));
-    CHECK(debug_nuc_usb.tx_packets == 1u && debug_nuc_usb.tx_completed == 0u);
-    CHECK(interface->TransmitCplt(tx_pointer, &tx_length, 1u) == USBD_OK);
-    CHECK(debug_nuc_usb.tx_completed == 1u && debug_nuc_usb.tx_completed_bytes == 4u);
     data[0] = 0;
     CHECK(tx_length == 4u && tx_pointer[0] == 0xff && tx_pointer != data);
     CHECK(!bsp_nuc_send(data, sizeof(data))); /* busy时不能覆盖未发完的buffer */
