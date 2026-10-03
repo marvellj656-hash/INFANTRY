@@ -228,3 +228,8 @@ NUC端需要按LEN解析新增的7字节心跳，并读取0x20数据末尾新增
 跟随目标是角差0°，默认±2°死区内不再追。机械零点由 `Task/gimbal/gimbal_config.h` 的 `CENTER_ECD_YAW` 定义，当前普通安装为5800，这是编码器计数而不是角度。只有云台和车头对齐时该角差也接近0，才能直接据此跟随。`debug_ins.yaw_deg` 是云台世界角，不是本跟随环直接输入。
 
 真正生效的是 `Task/chassis/chassis_config.h`：CHASSIS_FOLLOW_KP/KI/KD、CHASSIS_FOLLOW_MAX_RAD_S、CHASSIS_YAW_ACCEL_RAD_S2，以及跟随死区/方向/积分限幅。gimbal_config.h中旧CHASSIS_KP_V_FOLLOW等已删除。先保持Ki=Kd=0，方向与停车正确后再小幅增加Kp；要求速度顶住当前限速时才逐步改跟随限速，一次只改一项并重新编译烧录。旧版0.04/1.5rad/s只是示例；当前值以配置和第10组为准，单改Kp无法越过限速。
+
+
+## GM6020电流模式（新增第16组）
+
+选择16：gimbal_current。Yaw/Pitch的tx_id应为510（0x1FE）；最终发送码限制±8192（±1.5A）。速度环参数现在输出A，详见[电流模式与控制方式](../GM6020-current-control.md)。烧录和调试必须选同一个新ELF，避免结构布局改变后读错值。

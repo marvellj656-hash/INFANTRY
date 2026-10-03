@@ -5,6 +5,7 @@
 #include "chassis/chassis_task.h"
 #include "cmd/cmd_task.h"
 #include "gimbal/gimbal_task.h"
+#include "gimbal/gimbal_config.h"
 #include "ins/ins_task.h"
 #include "motor/dji_motor.h"
 #include "motor/motor_task.h"
@@ -53,17 +54,17 @@ static const DjiMotorConfig motor_config[] = {
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS},
 
     {.id = MOTOR_GIMBAL_YAW,
-     .type = DJI_GM6020,
+     .type = DJI_GM6020_CURRENT,
      .bus = 1,
      .esc_id = 3,
-     .output_limit_raw = 30000,
+     .output_limit_raw = GIMBAL_CURRENT_LIMIT_RAW,
      .feedback_timeout_ms = ROBOT_MOTOR_FEEDBACK_TIMEOUT_MS,
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS},
     {.id = MOTOR_GIMBAL_PITCH,
-     .type = DJI_GM6020,
+     .type = DJI_GM6020_CURRENT,
      .bus = 2,
      .esc_id = 4,
-     .output_limit_raw = 30000,
+     .output_limit_raw = GIMBAL_CURRENT_LIMIT_RAW,
      .feedback_timeout_ms = ROBOT_MOTOR_FEEDBACK_TIMEOUT_MS,
      .command_timeout_ms = ROBOT_MOTOR_COMMAND_TIMEOUT_MS},
 

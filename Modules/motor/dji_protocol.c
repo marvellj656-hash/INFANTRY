@@ -30,7 +30,8 @@ bool dji_motor_decode_feedback(const uint8_t *data, size_t length, DjiFeedback *
 
 void dji_motor_encode_currents(const int16_t raw[4], const int16_t limits[4], uint8_t bytes[8])
 {
-    /* CAN 标准数据帧 0x200，一帧按顺序控制 C620 ID1..4，都是高字节在前。 */
+    /* 同组四个输出按大端编码；帧ID和电流/电压模式由电机层选择。
+     * 此处只限幅与组字节，不猜电机种类或单位。 */
     for (unsigned i = 0; i < 4; ++i)
     {
         int32_t limited = raw[i];

@@ -133,7 +133,7 @@ void gimbal_control_update(GimbalController *s, const GimbalCommand *c,
   for (unsigned i = 0; i < 2; i++) {
     float measured =
         s->mode == GIMBAL_INIT ? in->relative_deg[i] : in->angle_deg[i];
-    /* 角度环：度 -> rad/s；速度环：rad/s -> GM6020 电压码。沿用旧版参数单位。
+    /* 角度环：度 -> rad/s；速度环：rad/s -> 转矩电流(A)。电调内部闭合电流环。
      */
     float rate = pid_calculate(&s->angle[i], measured, s->target_deg[i], dt);
     float raw = pid_calculate(&s->speed[i], in->rate_rad_s[i], rate, dt);
@@ -146,7 +146,9 @@ void gimbal_control_update(GimbalController *s, const GimbalCommand *c,
       pid_clear(&s->speed[i]);
       pid_clear(&s->angle[i]);
     }
-    out->raw[i] = (int16_t)raw;
+    /* 先限流再编码；绝不能把旧电压码直接发到电流帧。 */
+    float current_a = clamp(raw, -GIMBAL_CURRENT_LIMIT_A, GIMBAL_CURRENT_LIMIT_A);
+    out->raw[i] = (int16_t)lroundf(current_a * GIMBAL_CURRENT_RAW_PER_A);
     out->target_deg[i] = s->target_deg[i];
     out->relative_deg[i] = in->relative_deg[i];
   }

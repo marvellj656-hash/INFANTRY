@@ -19,7 +19,8 @@ typedef enum
 {
     DJI_M3508,
     DJI_M2006,
-    DJI_GM6020
+    DJI_GM6020,         /* 电压模式：保留旧设备配置的含义。 */
+    DJI_GM6020_CURRENT /* 电流模式：驱动器也必须已打开电流环。 */
 } DjiMotorType;
 typedef struct DjiMotor DjiMotor; /* 只给钥匙，不公开内部房间的布局。 */
 typedef DjiMotor *DjiMotorHandle;
@@ -44,6 +45,7 @@ typedef struct
 typedef struct
 {
     uint32_t bus, id;
+    uint32_t tx_id; /* 实际发送组ID；6020电流模式为0x1FE或0x2FE。 */
     uint16_t ecd;
     int16_t speed_rpm, current_raw;
     uint8_t temperature;

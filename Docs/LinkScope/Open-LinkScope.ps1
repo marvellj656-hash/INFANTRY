@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'shoot_stop_baseline', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion')]
+    [ValidateSet('', 'overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'shoot_stop_baseline', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion', 'gimbal_current')]
     [string]$Preset = '',
     [string]$AppDirectory = 'E:/FOQQ/Linkscope/LinkScope-x86-V1.3.0',
     [string]$ElfPath = '',
@@ -10,7 +10,7 @@ param(
 # Settings are copied only after all paths and variable sections have been checked.
 $ErrorActionPreference = 'Stop'
 try {
-    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion')
+    $choices = @('overview', 'remote', 'imu', 'gimbal', 'shoot', 'motors', 'links', 'shoot_stop', 'follow', 'follow_pid', 'follow_direction', 'chassis_wheels', 'auto_aim', 'nuc_link', 'nuc_motion', 'gimbal_current')
     if ([string]::IsNullOrWhiteSpace($Preset)) {
         Write-Host 'Choose the signals to preselect in LinkScope:'
         Write-Host '  1. overview - start here: command / IMU / gimbal / shoot'
@@ -28,6 +28,7 @@ try {
         Write-Host ' 13. auto_aim - SW2 request / block reason / NUC target / gimbal target'
         Write-Host ' 14. nuc_link - USB / RX heartbeat / target freshness'
         Write-Host ' 15. nuc_motion - TX angles / angular rates / heartbeat / reference'
+        Write-Host ' 16. gimbal_current - current CAN IDs / output codes / feedback / permits'
         $answer = Read-Host 'Number [1]'
         if ([string]::IsNullOrWhiteSpace($answer)) { $answer = '1' }
         $choice = 0

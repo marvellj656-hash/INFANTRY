@@ -24,8 +24,9 @@ typedef struct
     CanTxDebug debug;
 } MotorGroup;
 static struct DjiMotor objects[MOTOR_COUNT];
-/* 两条总线，各有 0x200、0x1ff、0x2ff 三组。 */
-static MotorGroup groups[6];
+/* 每条总线五组：C6x0两组/6020电压两组（共享0x1FF）/6020电流两组。
+ * 电流帧必须单独存放，不能覆盖同总线摩擦轮的0x200帧。 */
+static MotorGroup groups[10];
 volatile MotorFeedbackDebug debug_motor[MOTOR_COUNT];
 volatile CanTxDebug debug_chassis_tx; /* 保留现有 LinkScope 名称。 */
 static bool valid_handle(DjiMotorHandle motor)
@@ -43,17 +44,19 @@ static bool fresh(uint32_t now, uint32_t then, uint32_t timeout)
 }
 DjiMotorHandle dji_motor_register(const DjiMotorConfig *c)
 {
-    if (!c || (unsigned)c->id >= MOTOR_COUNT || (unsigned)c->type > DJI_GM6020 || c->bus < 1 ||
-        c->bus > 2 || c->esc_id < 1 || c->esc_id > (c->type == DJI_GM6020 ? 7 : 8) ||
+    if (!c || (unsigned)c->id >= MOTOR_COUNT || (unsigned)c->type > DJI_GM6020_CURRENT || c->bus < 1 ||
+        c->bus > 2 || c->esc_id < 1 || c->esc_id > (c->type >= DJI_GM6020 ? 7 : 8) ||
         c->output_limit_raw < 0 || !c->feedback_timeout_ms || !c->command_timeout_ms ||
         c->feedback_timeout_ms >= 0x80000000u || c->command_timeout_ms >= 0x80000000u)
         return NULL;
-    int limit = c->type == DJI_M3508 ? 16384 : c->type == DJI_M2006 ? 10000 : 30000;
+    int limit = c->type == DJI_M3508 ? 16384 : c->type == DJI_M2006 ? 10000 : c->type == DJI_GM6020_CURRENT ? 16384 : 30000;
     if (c->output_limit_raw > limit || objects[c->id].registered)
         return NULL;
-    uint16_t rx = (c->type == DJI_GM6020 ? 0x204 : 0x200) + c->esc_id;
-    unsigned local = c->type == DJI_GM6020 ? (c->esc_id <= 4 ? 1 : 2) : (c->esc_id <= 4 ? 0 : 1);
-    unsigned group = (c->bus - 1u) * 3u + local, slot = (c->esc_id - 1u) % 4u;
+    bool gm6020 = c->type >= DJI_GM6020;
+    uint16_t rx = (gm6020 ? 0x204 : 0x200) + c->esc_id;
+    unsigned local = c->type == DJI_GM6020_CURRENT ? (c->esc_id <= 4 ? 3 : 4)
+                     : gm6020 ? (c->esc_id <= 4 ? 1 : 2) : (c->esc_id <= 4 ? 0 : 1);
+    unsigned group = (c->bus - 1u) * 5u + local, slot = (c->esc_id - 1u) % 4u;
     for (unsigned i = 0; i < MOTOR_COUNT; ++i)
     {
         DjiMotor *m = &objects[i];
@@ -69,10 +72,11 @@ DjiMotorHandle dji_motor_register(const DjiMotorConfig *c)
                     .slot = (uint8_t)slot,
                     .registered = true};
     groups[group].bus = c->bus;
-    groups[group].id = local == 0 ? 0x200 : local == 1 ? 0x1ff : 0x2ff;
+    static const uint16_t ids[5] = {0x200, 0x1ff, 0x2ff, 0x1fe, 0x2fe};
+    groups[group].id = ids[local];
     groups[group].active |= c->output_limit_raw > 0;
     groups[group].tx_ok = true;
-    debug_motor[c->id] = (MotorFeedbackDebug){.bus = c->bus, .id = rx, .age_ms = UINT32_MAX};
+    debug_motor[c->id] = (MotorFeedbackDebug){.bus = c->bus, .id = rx, .tx_id = groups[group].id, .age_ms = UINT32_MAX};
     return m;
 }
 DjiMotorHandle dji_motor_find(DjiMotorId id)
@@ -189,7 +193,7 @@ bool dji_motor_receive(uint8_t bus, uint16_t id, const uint8_t *data, size_t len
 }
 void dji_motor_service(void)
 {
-    int16_t raw[6][4] = {{0}}, limits[6][4] = {{0}};
+    int16_t raw[10][4] = {{0}}, limits[10][4] = {{0}};
     bool ready[2] = {bsp_can_is_ready(1), bsp_can_is_ready(2)};
     /* 时间和指令一起取，避免高优先级任务恰好提交了“未来”的时间戳。 */
     taskENTER_CRITICAL();
@@ -211,7 +215,7 @@ void dji_motor_service(void)
         raw[m->group][m->slot] = m->command_valid ? m->requested : 0;
     }
     taskEXIT_CRITICAL();
-    for (unsigned g = 0; g < 6; ++g)
+    for (unsigned g = 0; g < 10; ++g)
     {
         MotorGroup *group = &groups[g];
         if (!group->active)
